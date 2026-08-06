@@ -1,0 +1,10 @@
+{
+  "FileVersion": 2,
+  "Id": "83c9a663-958d-469e-a65e-0e09ffbd8ab9",
+  "Items": [
+    {
+      "Id": "c90a0036-9b79-4b2c-aaa1-f2d003201ebc",
+      "Command": "--scene=scenes/teapot.obj --scale=1.0f --width=1024 --height=1024 --out=results/teapot.png --csv=results/teapot.csv --threads=0 --verbose=verbose"
+    }
+  ]
+}

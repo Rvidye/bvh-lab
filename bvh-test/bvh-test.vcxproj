@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{9D5E6F70-8192-43A4-8E5F-60718293A415}</ProjectGuid>
+    <RootNamespace>bvhtest</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(SolutionDir)common.props" />
+  </ImportGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <!--
+        googletest is compiled from source into this project rather than linked
+        from a prebuilt .lib. FoxRT ships ext/libs/$(Configuration)/gtest.lib,
+        which is convenient but pins you to whatever toolset and /MD flavour
+        built it. Building the amalgamated gtest-all.cc costs a few seconds and
+        can never mismatch our runtime.
+        gtest-all.cc includes its siblings by "src/..." relative to the
+        googletest root, so BOTH that root and include/ have to be on the path.
+      -->
+      <AdditionalIncludeDirectories>$(SolutionDir)bvh\;$(SolutionDir)external\googletest\include;$(SolutionDir)external\googletest;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="tests\vec_test.cpp" />
+    <ClCompile Include="tests\aabb_test.cpp" />
+    <ClCompile Include="tests\isect_test.cpp" />
+    <ClCompile Include="tests\ray_test.cpp" />
+    <ClCompile Include="tests\rng_test.cpp" />
+    <ClCompile Include="tests\mesh_test.cpp" />
+    <ClCompile Include="tests\camera_test.cpp" />
+    <ClCompile Include="tests\metrics_test.cpp" />
+    <ClCompile Include="tests\image_test.cpp" />
+    <ClCompile Include="tests\brute_force_test.cpp" />
+    <ClCompile Include="$(SolutionDir)external\googletest\src\gtest-all.cc">
+      <!-- gtest is third-party; do not let its warnings drown ours. -->
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\bvh\bvh.vcxproj">
+      <Project>{83c9a663-958d-469e-a65e-0e09ffbd8ab9}</Project>
+    </ProjectReference>
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
