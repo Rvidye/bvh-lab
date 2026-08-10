@@ -48,8 +48,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="bvh2_test.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="mode_test.cpp" />
+    <ClCompile Include="oracle_test.cpp" />
+    <ClCompile Include="rayset_test.cpp" />
     <ClCompile Include="tests\vec_test.cpp" />
     <ClCompile Include="tests\aabb_test.cpp" />
     <ClCompile Include="tests\isect_test.cpp" />

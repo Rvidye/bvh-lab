@@ -72,6 +72,27 @@
     <ClInclude Include="core\mode.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="core\bvh2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="build\bvh2_builder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="core\traverse_bvh2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="core\sampling.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="eval\quality.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="eval\rayset.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="eval\trace.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="util\log.cpp">
@@ -96,6 +117,18 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="reference\brute_force.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="build\bvh2_builder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="eval\quality.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="eval\rayset.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="eval\trace.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

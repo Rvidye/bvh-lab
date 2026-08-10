@@ -23,8 +23,22 @@ namespace bvh
 	class image;
 	class matrics;
 
-	// bvh's
+	// core/ layouts
+	union  bvh_ptr;
+	struct bvh2_node;
+	struct bvh2_view;
+
+	// build types /bvh's
 	class bvh2;
+	enum class split_method;
+	struct build_args;
+	struct build_report;
+
+	// eval
+	struct quality_metrics;
+	struct quality_args;
+	struct trace_result;
+
 } // namespace bvh
 
 

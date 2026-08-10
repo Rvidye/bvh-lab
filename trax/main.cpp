@@ -1,4 +1,9 @@
+#include <build/bvh2_builder.h>
+#include <core/mode.h>
 #include <core/trace_stats.h>
+#include <eval/quality.h>
+#include <eval/rayset.h>
+#include <eval/trace.h>
 #include <reference/brute_force.h>
 #include <util/camera.h>
 #include <util/image.h>
@@ -71,6 +76,56 @@ namespace
 			std::filesystem::create_directories(p.parent_path());
 	}
 
+	bool validate_against_oracle(const bvh2& tree, const mesh& m, const camera& cam, u32 stride)
+	{
+		const bvh2_view  view = tree.view();
+		const auto prims = make_prims(m, tree);
+
+		u64 checked = 0, mismatches = 0, ties = 0;
+		f32 worst = 0.0f;
+		std::vector<u32> scratch;
+
+		for (u32 j = 0; j < cam.height(); j += stride)
+		{
+			for (u32 i = 0; i < cam.width(); i += stride)
+			{
+				const ray r = cam.generate_ray_through_pixel(i, j);
+
+				hit fast;
+				null_stats s1;
+				intersect(view, r, fast, prims, s1);
+
+				// The BVH reports a slot; the oracle reports a mesh triangle id.
+				const u32 fast_prim = fast.valid() ? tree.prim_index(fast.id) : invalid_id;
+
+				// Tie-aware (PLAN.md �6.1): an exact id match is only required when
+				// the nearest hit is unique.
+				const oracle_result cmp =
+					compare_against_oracle(m, r, fast.valid(), fast.t, fast_prim, scratch);
+
+				++checked;
+				if (cmp.tie_resolved) ++ties;
+				if (!cmp.agree)
+				{
+					++mismatches;
+					if (cmp.t_delta > worst) worst = cmp.t_delta;
+				}
+			}
+		}
+
+		if (mismatches)
+		{
+			LOG_ERROR("  ORACLE MISMATCH: %llu/%llu rays differ (worst |dt| = %g)",
+				(unsigned long long)mismatches, (unsigned long long)checked, worst);
+			return false;
+		}
+
+		LOG_INFO("  oracle: %llu/%llu rays agree (%llu resolved by tie set)",
+			(unsigned long long)checked, (unsigned long long)checked,
+			(unsigned long long)ties);
+		return true;
+	}
+
 	void print_usage()
 	{
 		printf(
@@ -91,67 +146,234 @@ namespace
 int main(int argc, char** argv)
 {
 	const args opts(argc, argv);
-
 	if (opts.has("help")) { print_usage(); return 0; }
 
 	log_init(opts.has("verbose") ? log_level::verbose : log_level::info);
 
 	const std::string scene_path = opts.get("scene", "scenes/teapot.obj");
-	const std::string out_path = opts.get("out", "results/out.png");
-	const std::string csv_path = opts.get("csv", "results/out.csv");
+	const std::string out_dir = opts.get("out", "results");
+	const std::string csv_path = opts.get("csv", "results/m1_bvh2.csv");
+	const std::string workload_csv = opts.get("workload_csv", "results/m1_workload.csv");
 	const u32 width = opts.get_u32("width", 512);
 	const u32 height = opts.get_u32("height", 512);
+	const u32 bins = opts.get_u32("bins", 32);
 	const u32 threads = opts.get_u32("threads", 0);
 	const f32 scale = opts.get_f32("scale", 1.0f);
+	const bool want_epo = opts.has("epo");
+	const bool validate = !opts.has("no-validate");
+	const std::string rayset_dir = opts.get("raysets", "raysets");
+	const u32 incoherent_count = opts.get_u32("rays", 262144);
+	const u32 reps = opts.get_u32("reps", 3);
 
-	mesh m;
-	if (!m.load_obj(scene_path, scale))
+	mesh original;
+	if (!original.load_obj(scene_path, scale))
 	{
-		LOG_ERROR("could not load scene '%s'", scene_path.c_str());
+		LOG_ERROR("could not load '%s'", scene_path.c_str());
 		return 1;
 	}
 
-	const aabb& b = m.bounds();
-	LOG_INFO("bounds: (%.3f %.3f %.3f) .. (%.3f %.3f %.3f)", b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z);
-
-	const camera cam = camera::frame_bounds(b, width, height);
-
-	image img(width, height);
-
-	LOG_INFO("rendering %ux%u with %u threads, brute force over %u triangles...", width, height, threads ? threads : hardware_threads(), m.triangle_count());
-
-	const render_result r = render_normals(m, cam, img, threads);
-
-	ensure_parent_dir(out_path);
-	if (!img.write_png(out_path)) return 1;
-
-	const double prim_tests = double(r.rays) * double(m.triangle_count());
-	metrics row;
-	row.set("scene", std::filesystem::path(scene_path).filename().string());
-	row.set("triangles", m.triangle_count());
-	row.set("builder", "none");
-	row.set("layout", "none");
-	row.set("traversal", "brute_force");
-	row.set("width", width);
-	row.set("height", height);
-	row.set("rays", i64(r.rays));
-	row.set("hits", i64(r.hits));
-	row.set("hit_rate", r.rays ? double(r.hits) / double(r.rays) : 0.0);
-	row.set("threads", threads ? threads : hardware_threads());
-	row.set("trace_s", r.seconds);
-	row.set("mrays_s", r.mrays_per_second());
-	row.set("prim_tests", prim_tests, 0);
-	row.set("prim_tests_per_ray", r.rays ? prim_tests / double(r.rays) : 0.0, 1);
+	const camera cam = camera::frame_bounds(original.bounds(), width, height);
+	const std::string scene_name = std::filesystem::path(scene_path).filename().string();
 
 	ensure_parent_dir(csv_path);
-	row.flush(csv_path);
-	row.print(stdout);
+	ensure_parent_dir(workload_csv);
+	ensure_parent_dir(out_dir + "/x");
+
+	{
+		image img(width, height);
+		const render_result bf = render_normals(original, cam, img, threads);
+		img.write_png(out_dir + "/m1_reference.png");
+
+		LOG_INFO("brute force: %.3f s, %.3f MRays/s (%u tris/ray)",
+			bf.seconds, bf.mrays_per_second(), original.triangle_count());
+
+		metrics row;
+		row.set("scene", scene_name);
+		row.set("frame", 0u);
+		row.set("triangles", original.triangle_count());
+		row.set("builder", "brute_force");
+		row.set("layout", "none");
+		row.set("codec", "indexed_tri");
+		row.set("maintenance", "static");
+		row.set("traversal", "brute_force");
+		row.set("ray_set", "primary");
+		row.set("device", "cpu");
+		row.set("mode", default_mode::name);
+		row.set("bins", 0u);
+		row.set("build_ms", 0.0, 2);
+		row.set("nodes", 0u);
+		row.set("leaves", 0u);
+		row.set("max_depth", 0u);
+		row.set("mean_leaf", 0.0, 2);
+		row.set("bytes_per_tri", 0.0, 2);
+		row.set("sah_cost", 0.0, 4);
+		row.set("sah_cost_arches", 0.0, 2);
+		row.set("epo", 0.0, 4);
+		row.set("combined", 0.0, 4);
+		row.set("node_steps_per_ray", 0.0, 3);
+		row.set("prim_steps_per_ray", 0.0, 3);
+		row.set("tri_tests_per_ray", double(original.triangle_count()), 3);
+		row.set("max_stack", 0u);
+		row.set("trace_s", bf.seconds, 4);
+		row.set("mrays_s", bf.mrays_per_second(), 4);
+		row.set("hit_rate", bf.rays ? double(bf.hits) / double(bf.rays) : 0.0, 4);
+		row.set("oracle", "reference");
+		row.set("evidence", "E2");
+		row.flush(csv_path);
+	}
+
+	const split_method methods[] = {
+		split_method::median,
+		split_method::binned_sah_arches,
+		split_method::binned_sah,
+		split_method::sweep_sah,
+	};
+
+	bool all_valid = true;
+
+	for (split_method method : methods)
+	{
+		LOG_INFO("--- %s ---", to_string(method));
+		mesh m = original;
+
+		build_args ba;
+		ba.method = method;
+		ba.bins = bins;
+
+		bvh2 tree;
+		tree.build(m, ba);
+		tree.apply_reorder(m);
+		tree.refit(m);
+
+		if (tree.report().max_depth + 2 >= bvh2_stack_size)
+		{
+			LOG_ERROR("  tree depth %u exceeds the %u-entry traversal stack",
+				tree.report().max_depth, bvh2_stack_size);
+			all_valid = false;
+			continue;
+		}
+
+		bool valid = true;
+		if (validate) valid = validate_against_oracle(tree, m, cam, 8);
+		all_valid &= valid;
+
+		quality_args qa;
+		qa.compute_epo = want_epo;
+		timer qt;
+		const quality_metrics q = evaluate(tree, m, qa);
+		const double quality_ms = qt.elapsed_ms();
+
+		image             img(width, height);
+		std::vector<u32>  counts;
+		const trace_result tr = render_bvh2(tree, m, cam, img, &counts, threads);
+
+		const std::string tag = to_string(method);
+		img.write_png(out_dir + "/m1_" + tag + ".png");
+		image::from_counts(counts, width, height).write_png(out_dir + "/m1_" + tag + "_heatmap.png", false);
+
+		LOG_INFO("  SAH %.4f  EPO %.4f  nodes %u  depth %u  %.3f MRays/s  %.2f node steps/ray",
+			q.sah_cost, q.epo, q.node_count, q.max_depth,
+			tr.mrays_per_second(), tr.node_steps_per_ray());
+
+		rayset_args ra;
+		ra.width = width;
+		ra.height = height;
+		ra.incoherent_count = incoherent_count;
+
+		for (ray_distribution dist : all_ray_distributions)
+		{
+			rayset rs;
+			rs.scene = scene_name;
+			if (!rayset::load_or_generate(rs, rayset_dir, dist, m, tree, cam, ra))
+			{
+				LOG_ERROR("  could not obtain ray set '%s'", to_string(dist));
+				continue;
+			}
+			if (rs.empty()) continue;
+
+			const bool any_hit = (dist == ray_distribution::shadow_ao);
+			const trace_result rr = any_hit ? occlude_rayset(tree, m, rs, threads, reps)
+				: trace_rayset(tree, m, rs, threads, reps);
+
+			LOG_INFO("    %-11s %7u rays  %6.2f node steps/ray  %6.2f tri tests/ray  %.3f MRays/s",
+				to_string(dist), rs.size(), rr.node_steps_per_ray(),
+				rr.tri_tests_per_ray(), rr.mrays_per_second());
+
+			metrics rr_row;
+			rr_row.set("scene", scene_name);
+			rr_row.set("frame", 0u);
+			rr_row.set("triangles", m.triangle_count());
+			rr_row.set("builder", tag);
+			rr_row.set("layout", "bvh2");
+			rr_row.set("codec", "indexed_tri");
+			rr_row.set("maintenance", "static");
+			rr_row.set("traversal", any_hit ? "ordered_anyhit" : "ordered_closest");
+			rr_row.set("ray_set", to_string(dist));
+			rr_row.set("device", "cpu");
+			rr_row.set("mode", default_mode::name);
+			rr_row.set("rayset_hash", std::to_string(rs.hash()));
+			rr_row.set("rays", i64(rr.rays));
+			rr_row.set("hits", i64(rr.hits));
+			rr_row.set("node_steps_per_ray", rr.node_steps_per_ray(), 3);
+			rr_row.set("prim_steps_per_ray", rr.prim_steps_per_ray(), 3);
+			rr_row.set("tri_tests_per_ray", rr.tri_tests_per_ray(), 3);
+			rr_row.set("max_stack", rr.max_stack);
+			rr_row.set("trace_s", rr.seconds, 4);
+			rr_row.set("mrays_s", rr.mrays_per_second(), 4);
+			rr_row.set("source", "S-cpu");
+			rr_row.set("reps", reps);
+			rr_row.set("trace_s_min", rr.seconds_min, 4);
+			rr_row.set("trace_s_stddev", rr.seconds_stddev, 5);
+			rr_row.set("trace_s_cv", rr.cv(), 4);
+			rr_row.flush(workload_csv);
+		}
+		if (want_epo) LOG_INFO("  (quality eval took %.0f ms)", quality_ms);
+
+		metrics row;
+		row.set("scene", scene_name);
+		row.set("frame", 0u);
+		row.set("triangles", m.triangle_count());
+		row.set("builder", tag);
+		row.set("layout", "bvh2");
+		row.set("codec", "indexed_tri");
+		row.set("maintenance", "static");
+		row.set("traversal", "ordered_scalar");
+		row.set("ray_set", "primary");
+		row.set("device", "cpu");
+		row.set("mode", default_mode::name);
+		row.set("bins", (method == split_method::binned_sah || method == split_method::binned_sah_arches) ? bins : 0u);
+		row.set("build_ms", tree.report().build_ms, 2);
+		row.set("nodes", q.node_count);
+		row.set("leaves", q.leaf_count);
+		row.set("max_depth", q.max_depth);
+		row.set("mean_leaf", q.mean_leaf_size, 2);
+		row.set("bytes_per_tri", q.bytes_per_tri, 2);
+		row.set("sah_cost", q.sah_cost, 4);
+		row.set("sah_cost_arches", q.sah_cost_arches, 2);
+		// Blank, not 0, when EPO was not requested. A literal 0.0000 is
+		// indistinguishable from a tree that genuinely has no overlap.
+		if (want_epo) { row.set("epo", q.epo, 4); row.set("combined", q.combined, 4); }
+		else          { row.set("epo", ""); row.set("combined", ""); }
+		row.set("node_steps_per_ray", tr.node_steps_per_ray(), 3);
+		row.set("prim_steps_per_ray", tr.prim_steps_per_ray(), 3);
+		row.set("tri_tests_per_ray", tr.tri_tests_per_ray(), 3);
+		row.set("max_stack", tr.max_stack);
+		row.set("trace_s", tr.seconds, 4);
+		row.set("mrays_s", tr.mrays_per_second(), 4);
+		row.set("hit_rate", tr.rays ? double(tr.hits) / double(tr.rays) : 0.0, 4);
+		row.set("oracle", valid ? "match" : "MISMATCH");
+		row.set("evidence", "E1+E2");
+		row.flush(csv_path);
+		row.print(stdout);
+	}
 
 	report_thread_stats();
 	print_stats(stdout);
 
-	LOG_INFO("done in %.2f s (%.3f MRays/s)", r.seconds, r.mrays_per_second());
+	if (!all_valid) LOG_ERROR("one or more trees disagreed with the oracle");
+	else            LOG_INFO("all trees agree with the brute-force oracle");
+
 	log_shutdown();
-	return 0;
+	return all_valid ? 0 : 1;
 }
 

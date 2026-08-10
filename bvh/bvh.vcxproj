@@ -134,15 +134,22 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="build\bvh2_builder.h" />
     <ClInclude Include="bvh.h" />
     <ClInclude Include="core\aabb.h" />
+    <ClInclude Include="core\bvh2.h" />
     <ClInclude Include="core\isect.h" />
     <ClInclude Include="core\mode.h" />
     <ClInclude Include="core\qualifiers.h" />
     <ClInclude Include="core\ray.h" />
     <ClInclude Include="core\rng.h" />
+    <ClInclude Include="core\sampling.h" />
     <ClInclude Include="core\trace_stats.h" />
+    <ClInclude Include="core\traverse_bvh2.h" />
     <ClInclude Include="core\vec.h" />
+    <ClInclude Include="eval\quality.h" />
+    <ClInclude Include="eval\rayset.h" />
+    <ClInclude Include="eval\trace.h" />
     <ClInclude Include="reference\brute_force.h" />
     <ClInclude Include="util\camera.h" />
     <ClInclude Include="util\check.h" />
@@ -155,6 +162,10 @@
     <ClInclude Include="util\timer.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="build\bvh2_builder.cpp" />
+    <ClCompile Include="eval\quality.cpp" />
+    <ClCompile Include="eval\rayset.cpp" />
+    <ClCompile Include="eval\trace.cpp" />
     <ClCompile Include="reference\brute_force.cpp" />
     <ClCompile Include="util\camera.cpp" />
     <ClCompile Include="util\check.cpp" />

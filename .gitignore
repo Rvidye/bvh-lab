@@ -363,3 +363,5 @@ MigrationBackup/
 FodyWeavers.xsd
 
 scenes/*.obj
+# Driver log output.
+log.txt
