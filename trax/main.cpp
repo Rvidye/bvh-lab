@@ -55,7 +55,7 @@ namespace
 		f32 get_f32(const char* key, f32 fallback) const
 		{
 			auto it = _values.find(key);
-			return it == _values.find(key) ? fallback : f32(std::atof(it->second.c_str()));
+			return it == _values.end() ? fallback : f32(std::atof(it->second.c_str()));
 		}
 
 		bool has(const char* key) const { return _values.count(key) != 0; }

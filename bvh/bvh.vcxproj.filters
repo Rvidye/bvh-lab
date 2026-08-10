@@ -69,6 +69,9 @@
     <ClInclude Include="reference\brute_force.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="core\mode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="util\log.cpp">

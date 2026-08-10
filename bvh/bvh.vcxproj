@@ -137,6 +137,7 @@
     <ClInclude Include="bvh.h" />
     <ClInclude Include="core\aabb.h" />
     <ClInclude Include="core\isect.h" />
+    <ClInclude Include="core\mode.h" />
     <ClInclude Include="core\qualifiers.h" />
     <ClInclude Include="core\ray.h" />
     <ClInclude Include="core\rng.h" />
