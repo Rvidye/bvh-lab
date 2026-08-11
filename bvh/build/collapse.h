@@ -46,7 +46,8 @@ namespace bvh
 	// Per-depth structural statistics.
 	struct depth_overlap_stats
 	{
-		u32    internal_nodes{0};
+		u32    internal_nodes{0};        // ALL internal nodes at this depth (structural)
+		u32    invalid_parent_nodes{0};  // subset with SA(parent) <= 0; excluded from means
 		u64    pair_count{0};
 
 		double mean_child_area_ratio{0.0};

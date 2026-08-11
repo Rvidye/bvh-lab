@@ -15,6 +15,7 @@
 #include <util/stats.h>
 #include <util/timer.h>
 
+#include <chrono>
 #include <ctime>
 #include <cstdio>
 #include <cstdlib>
@@ -192,8 +193,12 @@ namespace
 			"  --scale=<f>            uniform mesh scale  (default 1.0)\n"
 			"  --width=<n>            image width         (default 512)\n"
 			"  --height=<n>           image height        (default 512)\n"
-			"  --out=<path.png>       image output        (default results/d1_normals.png)\n"
-			"  --csv=<path.csv>       metrics row output  (default results/d1.csv)\n"
+			"  --run_id=<id>          run identity        (default run_<date>_<us>)\n"
+			"  --out=<dir>            image output dir    (default results/<run_id>)\n"
+			"  --csv=<path.csv>       builder summary     (default results/<run_id>/m1_bvh2.csv)\n"
+			"  --workload_csv=<path>  per-ray-set rows    (default results/<run_id>/m1_workload.csv)\n"
+			"  --wide_csv=<path>      wide topology rows  (default results/<run_id>/m3_wide.csv)\n"
+			"  --depth_csv=<path>     overlap profile     (default results/<run_id>/m3_depth_profile.csv)\n"
 			"  --threads=<n>          0 = hardware        (default 0)\n"
 			"  --verbose              verbose logging\n"
 			"  --help\n");
@@ -207,10 +212,36 @@ int main(int argc, char** argv)
 
 	log_init(opts.has("verbose") ? log_level::verbose : log_level::info);
 
+	// Run identity, so rows from different invocations are never silently mixed.
+	// Microsecond resolution: a seconds stamp collides whenever two runs start in
+	// the same second, which merges two experiments into one directory.
+	char run_id_buf[64];
+	{
+		const auto now = std::chrono::system_clock::now();
+		const long long us = (long long)std::chrono::duration_cast<std::chrono::microseconds>(
+			now.time_since_epoch()).count();
+		const std::time_t secs = (std::time_t)(us / 1000000);
+		std::tm tmv{};
+#if defined(_WIN32)
+		localtime_s(&tmv, &secs);
+#else
+		localtime_r(&secs, &tmv);
+#endif
+		char stamp[32];
+		std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", &tmv);
+		snprintf(run_id_buf, sizeof(run_id_buf), "run_%s_%06lld", stamp, us % 1000000);
+	}
+	const std::string run_id = opts.get("run_id", run_id_buf);
+
+	// Every artifact defaults beneath results/<run_id>/ so no two runs can
+	// overwrite each other. Explicit --out/--csv/--workload_csv/--wide_csv/
+	// --depth_csv overrides are still honoured verbatim.
+	const std::string run_dir = "results/" + run_id;
+
 	const std::string scene_path = opts.get("scene", "scenes/teapot.obj");
-	const std::string out_dir = opts.get("out", "results");
-	const std::string csv_path = opts.get("csv", "results/m1_bvh2.csv");
-	const std::string workload_csv = opts.get("workload_csv", "results/m1_workload.csv");
+	const std::string out_dir = opts.get("out", run_dir.c_str());
+	const std::string csv_path = opts.get("csv", (run_dir + "/m1_bvh2.csv").c_str());
+	const std::string workload_csv = opts.get("workload_csv", (run_dir + "/m1_workload.csv").c_str());
 	const u32 width = opts.get_u32("width", 512);
 	const u32 height = opts.get_u32("height", 512);
 	const u32 bins = opts.get_u32("bins", 32);
@@ -221,13 +252,9 @@ int main(int argc, char** argv)
 	const std::string rayset_dir = opts.get("raysets", "raysets");
 	const u32 incoherent_count = opts.get_u32("rays", 262144);
 	const u32 reps = opts.get_u32("reps", 3);
-	const std::string wide_csv = opts.get("wide_csv", "results/m3_wide.csv");
+	const std::string wide_csv = opts.get("wide_csv", (run_dir + "/m3_wide.csv").c_str());
 	const bool run_wide = opts.has("wide");
-	const std::string depth_csv = opts.get("depth_csv", "results/m3_depth_profile.csv");
-	// Run identity, so rows from different invocations are never silently mixed.
-	char run_id_buf[64];
-	snprintf(run_id_buf, sizeof(run_id_buf), "%llu", (unsigned long long)std::time(nullptr));
-	const std::string run_id = opts.get("run_id", run_id_buf);
+	const std::string depth_csv = opts.get("depth_csv", (run_dir + "/m3_depth_profile.csv").c_str());
 
 	mesh original;
 	if (!original.load_obj(scene_path, scale))
@@ -244,6 +271,10 @@ int main(int argc, char** argv)
 	ensure_parent_dir(wide_csv);
 	ensure_parent_dir(depth_csv);
 	ensure_parent_dir(out_dir + "/x");
+
+	// A bare file name cannot say which run a profile belongs to; record the
+	// path this run actually wrote.
+	const std::string depth_csv_ref = std::filesystem::path(depth_csv).generic_string();
 
 	// baseline: brute force
 	{
@@ -282,8 +313,8 @@ int main(int argc, char** argv)
 		row.set("prim_steps_per_ray", 0.0, 3);
 		row.set("tri_tests_per_ray", double(original.triangle_count()), 3);
 		row.set("max_stack", 0u);
-		row.set("trace_s", bf.seconds, 4);
-		row.set("mrays_s", bf.mrays_per_second(), 4);
+		row.set("render_s", bf.seconds, 4);
+		row.set("render_mrays_s", bf.mrays_per_second(), 4);
 		row.set("hit_rate", bf.rays ? double(bf.hits) / double(bf.rays) : 0.0, 4);
 		row.set("oracle", "reference");
 		row.set("source_analytic", "");
@@ -353,14 +384,28 @@ int main(int argc, char** argv)
 		{
 			rayset rs;
 			rs.scene = scene_name;
-			if (!rayset::load_or_generate(rs, rayset_dir, dist, m, tree, cam, ra))
+			char rs_tag[96];
+			snprintf(rs_tag, sizeof(rs_tag), "%s/%s", tag.c_str(), to_string(dist));
+
+			// A ray set we could not obtain is a failed run, not something to
+			// skip quietly: the surviving rows would misrepresent the workload.
+			if (!rayset::load_or_generate(rs, rayset_dir, dist, m, tree, cam, ra) || rs.empty())
 			{
-				LOG_ERROR("  could not obtain ray set '%s'", to_string(dist));
+				LOG_ERROR("  could not obtain ray set '%s'", rs_tag);
+				all_valid = false;
 				continue;
 			}
-			if (rs.empty()) continue;
 
 			const bool any_hit = (dist == ray_distribution::shadow_ao);
+
+			// Validate the COMPLETE ray set before timing or publishing it: the
+			// camera-lattice check above only covers primary rays.
+			if (validate && !validate_rayset(tree, m, rs, any_hit, rs_tag))
+			{
+				all_valid = false;
+				continue; // omit the row entirely rather than publish it
+			}
+
 			const trace_result rr = any_hit ? occlude_rayset(tree, m, rs, threads, reps)
 				: trace_rayset(tree, m, rs, threads, reps);
 
@@ -369,6 +414,7 @@ int main(int argc, char** argv)
 				rr.tri_tests_per_ray(), rr.mrays_per_second());
 
 			metrics rr_row;
+			rr_row.set("run_id", run_id);
 			rr_row.set("scene", scene_name);
 			rr_row.set("frame", 0u);
 			rr_row.set("triangles", m.triangle_count());
@@ -394,6 +440,7 @@ int main(int argc, char** argv)
 			rr_row.set("trace_s_min", rr.seconds_min, 4);
 			rr_row.set("trace_s_stddev", rr.seconds_stddev, 5);
 			rr_row.set("trace_s_cv", rr.cv(), 4);
+			rr_row.set("threads_requested", threads);
 			rr_row.flush(workload_csv);
 		}
 		if (want_epo) LOG_INFO("  (quality eval took %.0f ms)", quality_ms);
@@ -426,8 +473,10 @@ int main(int argc, char** argv)
 		row.set("prim_steps_per_ray", tr.prim_steps_per_ray(), 3);
 		row.set("tri_tests_per_ray", tr.tri_tests_per_ray(), 3);
 		row.set("max_stack", tr.max_stack);
-		row.set("trace_s", tr.seconds, 4);
-		row.set("mrays_s", tr.mrays_per_second(), 4);
+		// These come from render_bvh2: a whole frame including primary ray
+		// generation and image writes, NOT a pure traversal timing.
+		row.set("render_s", tr.seconds, 4);
+		row.set("render_mrays_s", tr.mrays_per_second(), 4);
 		row.set("hit_rate", tr.rays ? double(tr.hits) / double(tr.rays) : 0.0, 4);
 		row.set("oracle", valid ? "match" : "MISMATCH");
 		row.set("source_analytic", "S-analytic");
@@ -482,9 +531,55 @@ int main(int argc, char** argv)
 				if (tree.report().max_depth + 2 >= bvh2_stack_size)
 				{
 					LOG_ERROR("  w%u tree depth %u exceeds the traversal stack", w, tree.report().max_depth);
+					all_valid = false;
 					continue;
 				}
 
+				const char* topology = w == 2 ? "bvh2" : (w == 4 ? "bvh4" : "bvh8");
+				const char* collapse_name = w == 2 ? "none" : to_string(cm);
+
+				// Phase 1: obtain and validate ALL six ray sets before a single
+				// row is written. The depth-profile rows are analytic, but they
+				// still describe this topology -- if the topology disagrees with
+				// the oracle, no row of any kind may be left behind claiming to
+				// describe it.
+				rayset_args ra;
+				ra.width = width; ra.height = height;
+				ra.incoherent_count = incoherent_count;
+
+				constexpr u32 dist_count = u32(sizeof(all_ray_distributions) / sizeof(all_ray_distributions[0]));
+				rayset sets[dist_count];
+				bool topology_ok = true;
+
+				for (u32 i = 0; i < dist_count && topology_ok; ++i)
+				{
+					const ray_distribution dist = all_ray_distributions[i];
+					rayset& rs = sets[i];
+					rs.scene = scene_name;
+
+					char tag[96];
+					snprintf(tag, sizeof(tag), "w%u/%s/%s", w, collapse_name, to_string(dist));
+
+					// A ray set we could not obtain is a failed run, not
+					// something to skip quietly.
+					if (!rayset::load_or_generate(rs, rayset_dir, dist, m, tree, cam, ra) || rs.empty())
+					{
+						LOG_ERROR("  could not obtain ray set '%s'", tag);
+						topology_ok = false;
+						break;
+					}
+
+					const bool any_hit = (dist == ray_distribution::shadow_ao);
+					if (validate && !validate_rayset(tree, m, rs, any_hit, tag)) topology_ok = false;
+				}
+
+				if (!topology_ok)
+				{
+					all_valid = false;
+					continue; // no depth rows and no timing rows for this topology
+				}
+
+				// Phase 2: the topology is trusted, so publish it.
 				const quality_metrics q = evaluate(tree, m);
 				const overlap_profile op = compute_overlap_profile(tree);
 
@@ -496,11 +591,12 @@ int main(int argc, char** argv)
 					metrics dr;
 					dr.set("run_id", run_id);
 					dr.set("scene", scene_name);
-					dr.set("topology", w == 2 ? "bvh2" : (w == 4 ? "bvh4" : "bvh8"));
+					dr.set("topology", topology);
 					dr.set("width", w);
-					dr.set("collapse", w == 2 ? "none" : to_string(cm));
+					dr.set("collapse", collapse_name);
 					dr.set("depth", d);
 					dr.set("internal_nodes", ds.internal_nodes);
+					dr.set("invalid_parent_nodes", ds.invalid_parent_nodes);
 					dr.set("pair_count", i64(ds.pair_count));
 					dr.set("mean_child_area_ratio", ds.mean_child_area_ratio, 5);
 					dr.set("mean_pair_overlap", ds.mean_pair_overlap, 6);
@@ -518,28 +614,11 @@ int main(int argc, char** argv)
 					w, w == 2 ? "-" : to_string(cm), cr.node_count, cr.max_depth,
 					cr.mean_fullness, q.sah_cost);
 
-				for (ray_distribution dist : all_ray_distributions)
+				for (u32 i = 0; i < dist_count; ++i)
 				{
-					rayset rs;
-					rs.scene = scene_name;
-					rayset_args ra;
-					ra.width = width; ra.height = height;
-					ra.incoherent_count = incoherent_count;
-					if (!rayset::load_or_generate(rs, rayset_dir, dist, m, tree, cam, ra)) continue;
-					if (rs.empty()) continue;
-
+					const ray_distribution dist = all_ray_distributions[i];
+					const rayset& rs = sets[i];
 					const bool any_hit = (dist == ray_distribution::shadow_ao);
-					char tag[96];
-					snprintf(tag, sizeof(tag), "w%u/%s/%s", w, w == 2 ? "none" : to_string(cm), to_string(dist));
-
-					if (validate)
-					{
-						if (!validate_rayset(tree, m, rs, any_hit, tag))
-						{
-							all_valid = false;
-							continue; // omit the row entirely rather than publish it
-						}
-					}
 
 					const trace_result rr = any_hit ? occlude_rayset(tree, m, rs, threads, reps)
 						: trace_rayset(tree, m, rs, threads, reps);
@@ -548,11 +627,11 @@ int main(int argc, char** argv)
 					row.set("run_id", run_id);
 					row.set("scene", scene_name);
 					row.set("builder", to_string(base));
-					row.set("topology", w == 2 ? "bvh2" : (w == 4 ? "bvh4" : "bvh8"));
+					row.set("topology", topology);
 					row.set("physical_layout", "slot32_aos");
 					row.set("traversal_kernel", any_hit ? "scalar_storage_lifo" : "scalar_distance_sorted");
 					row.set("width", w);
-					row.set("collapse", w == 2 ? "none" : to_string(cm));
+					row.set("collapse", collapse_name);
 					row.set("codec", "indexed_tri");
 					row.set("maintenance", "static");
 					row.set("ray_set", to_string(dist));
@@ -566,7 +645,11 @@ int main(int argc, char** argv)
 					row.set("sah_node_cost", q.sah_cost, 4);
 					row.set("sah_slot_cost", q.sah_cost_slots, 4);
 					row.set("node_bytes_per_tri", q.bytes_per_tri, 2);
-					row.set("depth_profile_csv", std::filesystem::path(depth_csv).filename().string());
+					row.set("depth_profile_csv", depth_csv_ref);
+					row.set("rayset_hash", std::to_string(rs.hash()));
+					row.set("rays", i64(rr.rays));
+					row.set("hits", i64(rr.hits));
+					row.set("threads_requested", threads);
 					row.set("node_steps_per_ray", rr.node_steps_per_ray(), 3);
 					row.set("box_tests_per_ray", rr.rays ? double(rr.box_tests) / double(rr.rays) : 0.0, 3);
 					row.set("tri_tests_per_ray", rr.tri_tests_per_ray(), 3);
@@ -574,7 +657,10 @@ int main(int argc, char** argv)
 					row.set("trace_s", rr.seconds, 4);
 					row.set("trace_s_cv", rr.cv(), 4);
 					row.set("mrays_s", rr.mrays_per_second(), 4);
-					row.set("source", "S-cpu");
+					// Only the timings come from the CPU kernel; every structural
+					// column above is derived analytically.
+					row.set("source_analytic", "S-analytic");
+					row.set("source_timing", "S-cpu");
 					row.set("reps", reps);
 					row.flush(wide_csv);
 				}

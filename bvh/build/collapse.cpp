@@ -5,6 +5,7 @@
 #include <util/timer.h>
 
 #include <algorithm>
+#include <cmath>
 #include <deque>
 #include <vector>
 
@@ -321,7 +322,10 @@ namespace bvh
 		const f32 ey = hi.y - lo.y;
 		const f32 ez = hi.z - lo.z;
 
-		if (ex < 0.0f || ey < 0.0f || ez < 0.0f) return 0.0f;
+		// Positive INTERIOR overlap only. A zero extent on any axis means the
+		// boxes merely touch along that axis, which is not overlap: a ray can
+		// not be forced into both children by a shared face of zero thickness.
+		if (ex <= 0.0f || ey <= 0.0f || ez <= 0.0f) return 0.0f;
 
 		return 2.0f * (ex * ey + ey * ez + ez * ex);
 	}
@@ -355,10 +359,20 @@ namespace bvh
 				continue;
 			}
 
-			const f32 parent_area = node.bounds.surface_area();
-			if (parent_area <= 0.0f) continue;
-
 			depth_overlap_stats& s = p.depth[d];
+
+			// Structural counts are recorded BEFORE the degenerate test, so a
+			// zero-area parent still appears in internal_nodes rather than
+			// vanishing from the profile. Only the normalized quantities skip it.
+			++s.internal_nodes;
+			p.depth_count = bvh::max(p.depth_count, d + 1);
+
+			const f32 parent_area = node.bounds.surface_area();
+			if (parent_area <= 0.0f)
+			{
+				++s.invalid_parent_nodes;
+				continue;
+			}
 
 			// child area ratio: expansion, NOT overlap
 			f32 child_area = 0.0f;
@@ -384,8 +398,6 @@ namespace bvh
 			}
 
 			s.pair_count += u64(n) * u64(n - 1) / 2u;
-			++s.internal_nodes;
-			p.depth_count = bvh::max(p.depth_count, d + 1);
 		}
 
 		for (u32 d = 0; d < overlap_profile::max_depth_buckets; ++d)
@@ -393,7 +405,11 @@ namespace bvh
 			depth_overlap_stats& s = p.depth[d];
 			if (s.internal_nodes == 0) continue;
 
-			s.mean_child_area_ratio = area_ratio_sum[d] / double(s.internal_nodes);
+			// Means divide by the number of VALID contributions, not by every
+			// internal node: a degenerate parent produced no normalized sample,
+			// so including it would deflate the mean.
+			const u32 valid = s.internal_nodes - s.invalid_parent_nodes;
+			s.mean_child_area_ratio = valid ? area_ratio_sum[d] / double(valid) : 0.0;
 			s.mean_pair_overlap =
 			    s.pair_count ? s.sum_pair_overlap / double(s.pair_count) : 0.0;
 
@@ -401,8 +417,11 @@ namespace bvh
 			if (!samples.empty())
 			{
 				std::sort(samples.begin(), samples.end());
-				// Nearest-rank p95: index ceil(0.95*N)-1, clamped.
-				size_t idx = static_cast<size_t>(0.95 * double(samples.size()));
+				// Nearest-rank p95: rank = ceil(0.95 * N), index = rank - 1.
+				// The previous truncating form gave floor(0.95*N), which is one
+				// too low whenever 0.95*N is not an integer.
+				const double rank = std::ceil(0.95 * double(samples.size()));
+				size_t idx = rank >= 1.0 ? static_cast<size_t>(rank) - 1u : 0u;
 				if (idx >= samples.size()) idx = samples.size() - 1;
 				s.p95_pair_overlap = samples[idx];
 			}
