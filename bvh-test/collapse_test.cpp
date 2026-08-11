@@ -297,7 +297,18 @@ TEST(Collapse, OverlapProfileIsPopulated)
 	const overlap_profile p = compute_overlap_profile(tree);
 
 	ASSERT_GT(p.depth_count, 0u);
-	EXPECT_GT(p.nodes[0], 0u);
+
+	// Exactly one internal node at depth 0 -- the root -- not merely "nonzero".
+	EXPECT_EQ(p.depth[0].internal_nodes, 1u);
+
+	// Every populated bucket must expand surface area (children always cover at
+	// least the parent's extent). Pair overlap may legitimately be ZERO for a
+	// well-separated node, so it is not asserted positive here; the exact-value
+	// tests live in overlap_test.cpp.
 	for (u32 d = 0; d < p.depth_count; ++d)
-		if (p.nodes[d]) ASSERT_GT(p.mean_overlap[d], 0.0) << "depth " << d;
+	{
+		if (p.depth[d].internal_nodes == 0) continue;
+		ASSERT_GT(p.depth[d].mean_child_area_ratio, 0.0) << "depth " << d;
+		ASSERT_GE(p.depth[d].mean_pair_overlap, 0.0) << "depth " << d;
+	}
 }

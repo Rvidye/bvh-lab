@@ -4,6 +4,7 @@
 #include <util/log.h>
 #include <util/timer.h>
 
+#include <algorithm>
 #include <deque>
 #include <vector>
 
@@ -310,6 +311,26 @@ namespace bvh
 		return r;
 	}
 
+	f32 box_intersection_area(const aabb& a, const aabb& b)
+	{
+		// Per-axis overlap. A negative extent on ANY axis means the boxes are
+		// disjoint, so the intersection is empty and contributes nothing.
+		//
+		// aabb::surface_area() cannot be reused here: it only guards min.x >
+		// max.x, so an intersection that is disjoint on y alone would produce a
+		// negative term rather than zero.
+		const vec3 lo = bvh::max(a.min, b.min);
+		const vec3 hi = bvh::min(a.max, b.max);
+
+		const f32 ex = hi.x - lo.x;
+		const f32 ey = hi.y - lo.y;
+		const f32 ez = hi.z - lo.z;
+
+		if (ex < 0.0f || ey < 0.0f || ez < 0.0f) return 0.0f;
+
+		return 2.0f * (ex * ey + ey * ez + ez * ex);
+	}
+
 	overlap_profile compute_overlap_profile(const bvh2& tree)
 	{
 		overlap_profile p;
@@ -317,34 +338,81 @@ namespace bvh
 		const std::vector<bvh2_node>& nodes = tree.nodes();
 		if (nodes.empty()) return p;
 
-		std::vector<u32> depth(nodes.size(), 0u);
-		std::vector<double> sum(overlap_profile::max_depth_buckets, 0.0);
+		std::vector<u32>    depth(nodes.size(), 0u);
+		std::vector<double> area_ratio_sum(overlap_profile::max_depth_buckets, 0.0);
+
+		// Per-depth pair samples, kept so p95 and max are exact rather than
+		// estimated from a running mean.
+		std::vector<std::vector<double>> pair_samples(overlap_profile::max_depth_buckets);
 
 		for (u32 i = 0; i < nodes.size(); ++i)
 		{
 			const bvh2_node& node = nodes[i];
-			const u32 d = depth[i];
+			const u32        d    = depth[i];
 
 			if (!node.ptr.is_int) continue;
+
 			for (u32 c = 0; c < node.ptr.child_cnt; ++c)
 				depth[node.ptr.child_idx + c] = d + 1;
 
-			if (d >= overlap_profile::max_depth_buckets) continue;
+			if (d >= overlap_profile::max_depth_buckets)
+			{
+				++p.nodes_beyond_buckets;
+				continue;
+			}
 
 			const f32 parent_area = node.bounds.surface_area();
 			if (parent_area <= 0.0f) continue;
 
+			depth_overlap_stats& s = p.depth[d];
+
+			// --- child area ratio: expansion, NOT overlap ---
 			f32 child_area = 0.0f;
 			for (u32 c = 0; c < node.ptr.child_cnt; ++c)
 				child_area += nodes[node.ptr.child_idx + c].bounds.surface_area();
+			area_ratio_sum[d] += double(child_area) / double(parent_area);
 
-			sum[d] += double(child_area) / double(parent_area);
-			p.nodes[d]++;
+			// --- pairwise overlap: the real thing ---
+			const u32 n = node.ptr.child_cnt;
+			for (u32 a = 0; a < n; ++a)
+			{
+				for (u32 b = a + 1; b < n; ++b)
+				{
+					const f32 inter = box_intersection_area(
+					    nodes[node.ptr.child_idx + a].bounds,
+					    nodes[node.ptr.child_idx + b].bounds);
+
+					const double ratio = double(inter) / double(parent_area);
+					pair_samples[d].push_back(ratio);
+					s.sum_pair_overlap += ratio;
+					if (ratio > s.max_pair_overlap) s.max_pair_overlap = ratio;
+				}
+			}
+
+			s.pair_count += u64(n) * u64(n - 1) / 2u;
+			++s.internal_nodes;
 			p.depth_count = bvh::max(p.depth_count, d + 1);
 		}
 
 		for (u32 d = 0; d < overlap_profile::max_depth_buckets; ++d)
-			p.mean_overlap[d] = p.nodes[d] ? sum[d] / double(p.nodes[d]) : 0.0;
+		{
+			depth_overlap_stats& s = p.depth[d];
+			if (s.internal_nodes == 0) continue;
+
+			s.mean_child_area_ratio = area_ratio_sum[d] / double(s.internal_nodes);
+			s.mean_pair_overlap =
+			    s.pair_count ? s.sum_pair_overlap / double(s.pair_count) : 0.0;
+
+			std::vector<double>& samples = pair_samples[d];
+			if (!samples.empty())
+			{
+				std::sort(samples.begin(), samples.end());
+				// Nearest-rank p95: index ceil(0.95*N)-1, clamped.
+				size_t idx = static_cast<size_t>(0.95 * double(samples.size()));
+				if (idx >= samples.size()) idx = samples.size() - 1;
+				s.p95_pair_overlap = samples[idx];
+			}
+		}
 
 		return p;
 	}

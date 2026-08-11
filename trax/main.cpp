@@ -15,6 +15,7 @@
 #include <util/stats.h>
 #include <util/timer.h>
 
+#include <ctime>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -127,6 +128,72 @@ namespace
 		return true;
 	}
 
+	// Validates a tree against the tie-aware brute-force oracle over an ENTIRE
+	// serialized ray set -- closest-hit or any-hit as appropriate.
+	//
+	// The previous wide loop validated nothing: it never touched all_valid, so
+	// "all trees agree" described the BVH2 builders only. A wide tree is exactly
+	// where a collapse bug would show up, so it is the last place to skip.
+	bool validate_rayset(const bvh2& tree, const mesh& m, const rayset& rs, bool any_hit,
+	                     const char* tag, u32 max_report = 5)
+	{
+		const bvh2_view view  = tree.view();
+		const auto      prims = make_prims(m, tree);
+
+		u64 mismatches = 0, ties = 0;
+		std::vector<u32> scratch;
+
+		for (u32 i = 0; i < rs.size(); ++i)
+		{
+			const ray r = rs.get(i);
+
+			if (any_hit)
+			{
+				null_stats s1, s2;
+				const bool fast = occluded(view, r, prims, s1);
+				const bool slow = occluded_brute_force(m, r, s2);
+				if (fast == slow) continue;
+
+				++mismatches;
+				if (mismatches <= max_report)
+					LOG_ERROR("  ORACLE [%s] anyhit rayset=%llu ray=%u: bvh=%d oracle=%d "
+					          "o=(%g %g %g) d=(%g %g %g) t_max=%g",
+					          tag, (unsigned long long)rs.hash(), i, int(fast), int(slow),
+					          r.o.x, r.o.y, r.o.z, r.d.x, r.d.y, r.d.z, r.t_max);
+				continue;
+			}
+
+			hit h;
+			h.t = r.t_max;
+			null_stats s;
+			intersect(view, r, h, prims, s);
+
+			const u32 id = h.valid() ? tree.prim_index(h.id) : invalid_id;
+			const oracle_result cmp = compare_against_oracle(m, r, h.valid(), h.t, id, scratch);
+
+			if (cmp.tie_resolved) ++ties;
+			if (cmp.agree) continue;
+
+			++mismatches;
+			if (mismatches <= max_report)
+				LOG_ERROR("  ORACLE [%s] closest rayset=%llu ray=%u: hit=%d t=%g id=%u "
+				          "(%s%s%s) |dt|=%g tie_set=%zu",
+				          tag, (unsigned long long)rs.hash(), i, int(h.valid()), h.t, id,
+				          cmp.miss_mismatch ? "hit/miss " : "",
+				          cmp.t_mismatch ? "t " : "",
+				          cmp.id_mismatch ? "id" : "",
+				          cmp.t_delta, scratch.size());
+		}
+
+		if (mismatches)
+		{
+			LOG_ERROR("  [%s] %llu/%u rays disagree with the oracle", tag,
+			          (unsigned long long)mismatches, rs.size());
+			return false;
+		}
+		return true;
+	}
+
 	void print_usage()
 	{
 		printf(
@@ -167,6 +234,11 @@ int main(int argc, char** argv)
 	const u32 reps = opts.get_u32("reps", 3);
 	const std::string wide_csv = opts.get("wide_csv", "results/m3_wide.csv");
 	const bool run_wide = opts.has("wide");
+	const std::string depth_csv = opts.get("depth_csv", "results/m3_depth_profile.csv");
+	// Run identity, so rows from different invocations are never silently mixed.
+	char run_id_buf[64];
+	snprintf(run_id_buf, sizeof(run_id_buf), "%llu", (unsigned long long)std::time(nullptr));
+	const std::string run_id = opts.get("run_id", run_id_buf);
 
 	mesh original;
 	if (!original.load_obj(scene_path, scale))
@@ -181,6 +253,7 @@ int main(int argc, char** argv)
 	ensure_parent_dir(csv_path);
 	ensure_parent_dir(workload_csv);
 	ensure_parent_dir(wide_csv);
+	ensure_parent_dir(depth_csv);
 	ensure_parent_dir(out_dir + "/x");
 
 	// baseline: brute force
@@ -193,6 +266,7 @@ int main(int argc, char** argv)
 			bf.seconds, bf.mrays_per_second(), original.triangle_count());
 
 		metrics row;
+		row.set("run_id", run_id);
 		row.set("scene", scene_name);
 		row.set("frame", 0u);
 		row.set("triangles", original.triangle_count());
@@ -210,8 +284,8 @@ int main(int argc, char** argv)
 		row.set("leaves", 0u);
 		row.set("max_depth", 0u);
 		row.set("mean_leaf", 0.0, 2);
-		row.set("bytes_per_tri", 0.0, 2);
-		row.set("sah_cost", 0.0, 4);
+		row.set("node_bytes_per_tri", 0.0, 2);
+		row.set("sah_node_cost", 0.0, 4);
 		row.set("sah_cost_arches", 0.0, 2);
 		row.set("epo", 0.0, 4);
 		row.set("combined", 0.0, 4);
@@ -223,7 +297,11 @@ int main(int argc, char** argv)
 		row.set("mrays_s", bf.mrays_per_second(), 4);
 		row.set("hit_rate", bf.rays ? double(bf.hits) / double(bf.rays) : 0.0, 4);
 		row.set("oracle", "reference");
-		row.set("evidence", "E2");
+		// PLAN.md source categories, replacing the old E1..E4 ladder. This row is
+		// a CPU timing of the brute-force oracle and carries no analytic tree
+		// metrics, so only the timing source applies.
+		row.set("source_analytic", "");
+		row.set("source_timing", "S-cpu");
 		row.flush(csv_path);
 	}
 
@@ -335,6 +413,7 @@ int main(int argc, char** argv)
 		if (want_epo) LOG_INFO("  (quality eval took %.0f ms)", quality_ms);
 
 		metrics row;
+		row.set("run_id", run_id);
 		row.set("scene", scene_name);
 		row.set("frame", 0u);
 		row.set("triangles", m.triangle_count());
@@ -352,8 +431,8 @@ int main(int argc, char** argv)
 		row.set("leaves", q.leaf_count);
 		row.set("max_depth", q.max_depth);
 		row.set("mean_leaf", q.mean_leaf_size, 2);
-		row.set("bytes_per_tri", q.bytes_per_tri, 2);
-		row.set("sah_cost", q.sah_cost, 4);
+		row.set("node_bytes_per_tri", q.bytes_per_tri, 2);
+		row.set("sah_node_cost", q.sah_cost, 4);
 		row.set("sah_cost_arches", q.sah_cost_arches, 2);
 		// Blank, not 0, when EPO was not requested. A literal 0.0000 is
 		// indistinguishable from a tree that genuinely has no overlap.
@@ -367,7 +446,8 @@ int main(int argc, char** argv)
 		row.set("mrays_s", tr.mrays_per_second(), 4);
 		row.set("hit_rate", tr.rays ? double(tr.hits) / double(tr.rays) : 0.0, 4);
 		row.set("oracle", valid ? "match" : "MISMATCH");
-		row.set("evidence", "E1+E2");
+		row.set("source_analytic", "S-analytic");
+			row.set("source_timing", "S-cpu");
 		row.flush(csv_path);
 		row.print(stdout);
 	}
@@ -424,6 +504,38 @@ int main(int argc, char** argv)
 				const quality_metrics q = evaluate(tree, m);
 				const overlap_profile op = compute_overlap_profile(tree);
 
+				// FULL profile, every populated depth.
+				//   child_area_ratio = surface-area EXPANSION (disjoint children still
+				//                      inflate it); NOT overlap.
+				//   pair_overlap     = real geometric overlap, zero when disjoint.
+				// mean_pair_overlap divides by pair count and IS comparable across
+				// widths; the sum is not, because C(n,2) grows with width.
+				for (u32 d = 0; d < op.depth_count; ++d)
+				{
+					const depth_overlap_stats& ds = op.depth[d];
+					if (ds.internal_nodes == 0) continue;
+
+					metrics dr;
+					dr.set("run_id", run_id);
+					dr.set("scene", scene_name);
+					dr.set("topology", w == 2 ? "bvh2" : (w == 4 ? "bvh4" : "bvh8"));
+					dr.set("width", w);
+					dr.set("collapse", w == 2 ? "none" : to_string(cm));
+					dr.set("depth", d);
+					dr.set("internal_nodes", ds.internal_nodes);
+					dr.set("pair_count", i64(ds.pair_count));
+					dr.set("mean_child_area_ratio", ds.mean_child_area_ratio, 5);
+					dr.set("mean_pair_overlap", ds.mean_pair_overlap, 6);
+					dr.set("p95_pair_overlap", ds.p95_pair_overlap, 6);
+					dr.set("max_pair_overlap", ds.max_pair_overlap, 6);
+					dr.set("sum_pair_overlap_width_dependent", ds.sum_pair_overlap, 6);
+					dr.set("source", "S-analytic");
+					dr.flush(depth_csv);
+				}
+				if (op.nodes_beyond_buckets)
+					LOG_WARN("  %u nodes deeper than the %u depth buckets were not profiled",
+						op.nodes_beyond_buckets, overlap_profile::max_depth_buckets);
+
 				LOG_INFO("w%u %-6s: %u nodes, depth %u, fullness %.2f, SAH %.4f",
 					w, w == 2 ? "-" : to_string(cm), cr.node_count, cr.max_depth,
 					cr.mean_fullness, q.sah_cost);
@@ -439,13 +551,38 @@ int main(int argc, char** argv)
 					if (rs.empty()) continue;
 
 					const bool any_hit = (dist == ray_distribution::shadow_ao);
+
+					// Validate BEFORE measuring. A wide tree is exactly where a collapse
+					// bug hides, and a fast wrong tree looks like a win. Previously the
+					// wide loop never touched all_valid, so "all trees agree" described
+					// the BVH2 builders only.
+					char tag[96];
+					snprintf(tag, sizeof(tag), "w%u/%s/%s", w, w == 2 ? "none" : to_string(cm), to_string(dist));
+
+					if (validate)
+					{
+						if (!validate_rayset(tree, m, rs, any_hit, tag))
+						{
+							all_valid = false;
+							continue; // omit the row entirely rather than publish it
+						}
+					}
+
 					const trace_result rr = any_hit ? occlude_rayset(tree, m, rs, threads, reps)
 						: trace_rayset(tree, m, rs, threads, reps);
 
 					metrics row;
+					row.set("run_id", run_id);
 					row.set("scene", scene_name);
 					row.set("builder", to_string(base));
-					row.set("layout", w == 2 ? "bvh2" : (w == 4 ? "bvh4" : "bvh8"));
+					// Topology is the branching factor; physical_layout is how it is STORED.
+					// This is an array of 32-byte bvh2_node child records with a variable
+					// child count -- a logical N-ary slot array, NOT a packed SIMD BVH4/BVH8
+					// or any GPU layout. Timings and byte counts here must not be read as
+					// those.
+					row.set("topology", w == 2 ? "bvh2" : (w == 4 ? "bvh4" : "bvh8"));
+					row.set("physical_layout", "slot32_aos");
+					row.set("traversal_kernel", any_hit ? "scalar_storage_lifo" : "scalar_distance_sorted");
 					row.set("width", w);
 					row.set("collapse", w == 2 ? "none" : to_string(cm));
 					row.set("codec", "indexed_tri");
@@ -458,14 +595,15 @@ int main(int argc, char** argv)
 					row.set("max_depth", cr.max_depth);
 					row.set("mean_fullness", cr.mean_fullness, 3);
 					row.set("collapse_ms", cr.collapse_ms, 2);
-					row.set("sah_cost", q.sah_cost, 4);
+					row.set("sah_node_cost", q.sah_cost, 4);
 					// The one to compare ACROSS widths; sah_cost charges per node
 					// and so falls with width for free.
-					row.set("sah_cost_slots", q.sah_cost_slots, 4);
-					row.set("bytes_per_tri", q.bytes_per_tri, 2);
-					row.set("overlap_d0", op.mean_overlap[0], 4);
-					row.set("overlap_d3", op.mean_overlap[3], 4);
-					row.set("overlap_d6", op.mean_overlap[6], 4);
+					row.set("sah_slot_cost", q.sah_cost_slots, 4);
+					row.set("node_bytes_per_tri", q.bytes_per_tri, 2);
+					// Depth-resolved structure lives in its own CSV. Sampling three
+					// depths discarded the profile, and the old column mixed up two
+					// different quantities (see build/collapse.h).
+					row.set("depth_profile_csv", std::filesystem::path(depth_csv).filename().string());
 					// node steps fall with width; box tests per step RISE. The
 					// trade this milestone exists to measure.
 					row.set("node_steps_per_ray", rr.node_steps_per_ray(), 3);
