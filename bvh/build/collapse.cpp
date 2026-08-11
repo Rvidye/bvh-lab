@@ -313,12 +313,7 @@ namespace bvh
 
 	f32 box_intersection_area(const aabb& a, const aabb& b)
 	{
-		// Per-axis overlap. A negative extent on ANY axis means the boxes are
-		// disjoint, so the intersection is empty and contributes nothing.
-		//
-		// aabb::surface_area() cannot be reused here: it only guards min.x >
-		// max.x, so an intersection that is disjoint on y alone would produce a
-		// negative term rather than zero.
+		// Per-axis overlap.
 		const vec3 lo = bvh::max(a.min, b.min);
 		const vec3 hi = bvh::min(a.max, b.max);
 
@@ -341,8 +336,7 @@ namespace bvh
 		std::vector<u32>    depth(nodes.size(), 0u);
 		std::vector<double> area_ratio_sum(overlap_profile::max_depth_buckets, 0.0);
 
-		// Per-depth pair samples, kept so p95 and max are exact rather than
-		// estimated from a running mean.
+		// Per-depth pair samples
 		std::vector<std::vector<double>> pair_samples(overlap_profile::max_depth_buckets);
 
 		for (u32 i = 0; i < nodes.size(); ++i)
@@ -366,13 +360,13 @@ namespace bvh
 
 			depth_overlap_stats& s = p.depth[d];
 
-			// --- child area ratio: expansion, NOT overlap ---
+			// child area ratio: expansion, NOT overlap
 			f32 child_area = 0.0f;
 			for (u32 c = 0; c < node.ptr.child_cnt; ++c)
 				child_area += nodes[node.ptr.child_idx + c].bounds.surface_area();
 			area_ratio_sum[d] += double(child_area) / double(parent_area);
 
-			// --- pairwise overlap: the real thing ---
+			// pairwise overlap: the real thing
 			const u32 n = node.ptr.child_cnt;
 			for (u32 a = 0; a < n; ++a)
 			{

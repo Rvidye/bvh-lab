@@ -97,13 +97,8 @@ namespace
 				null_stats s1;
 				intersect(view, r, fast, prims, s1);
 
-				// The BVH reports a slot; the oracle reports a mesh triangle id.
 				const u32 fast_prim = fast.valid() ? tree.prim_index(fast.id) : invalid_id;
-
-				// Tie-aware (PLAN.md �6.1): an exact id match is only required when
-				// the nearest hit is unique.
-				const oracle_result cmp =
-					compare_against_oracle(m, r, fast.valid(), fast.t, fast_prim, scratch);
+				const oracle_result cmp = compare_against_oracle(m, r, fast.valid(), fast.t, fast_prim, scratch);
 
 				++checked;
 				if (cmp.tie_resolved) ++ties;
@@ -128,12 +123,6 @@ namespace
 		return true;
 	}
 
-	// Validates a tree against the tie-aware brute-force oracle over an ENTIRE
-	// serialized ray set -- closest-hit or any-hit as appropriate.
-	//
-	// The previous wide loop validated nothing: it never touched all_valid, so
-	// "all trees agree" described the BVH2 builders only. A wide tree is exactly
-	// where a collapse bug would show up, so it is the last place to skip.
 	bool validate_rayset(const bvh2& tree, const mesh& m, const rayset& rs, bool any_hit,
 	                     const char* tag, u32 max_report = 5)
 	{
@@ -297,9 +286,6 @@ int main(int argc, char** argv)
 		row.set("mrays_s", bf.mrays_per_second(), 4);
 		row.set("hit_rate", bf.rays ? double(bf.hits) / double(bf.rays) : 0.0, 4);
 		row.set("oracle", "reference");
-		// PLAN.md source categories, replacing the old E1..E4 ladder. This row is
-		// a CPU timing of the brute-force oracle and carries no analytic tree
-		// metrics, so only the timing source applies.
 		row.set("source_analytic", "");
 		row.set("source_timing", "S-cpu");
 		row.flush(csv_path);
@@ -434,8 +420,6 @@ int main(int argc, char** argv)
 		row.set("node_bytes_per_tri", q.bytes_per_tri, 2);
 		row.set("sah_node_cost", q.sah_cost, 4);
 		row.set("sah_cost_arches", q.sah_cost_arches, 2);
-		// Blank, not 0, when EPO was not requested. A literal 0.0000 is
-		// indistinguishable from a tree that genuinely has no overlap.
 		if (want_epo) { row.set("epo", q.epo, 4); row.set("combined", q.combined, 4); }
 		else          { row.set("epo", ""); row.set("combined", ""); }
 		row.set("node_steps_per_ray", tr.node_steps_per_ray(), 3);
@@ -504,12 +488,6 @@ int main(int argc, char** argv)
 				const quality_metrics q = evaluate(tree, m);
 				const overlap_profile op = compute_overlap_profile(tree);
 
-				// FULL profile, every populated depth.
-				//   child_area_ratio = surface-area EXPANSION (disjoint children still
-				//                      inflate it); NOT overlap.
-				//   pair_overlap     = real geometric overlap, zero when disjoint.
-				// mean_pair_overlap divides by pair count and IS comparable across
-				// widths; the sum is not, because C(n,2) grows with width.
 				for (u32 d = 0; d < op.depth_count; ++d)
 				{
 					const depth_overlap_stats& ds = op.depth[d];
@@ -551,11 +529,6 @@ int main(int argc, char** argv)
 					if (rs.empty()) continue;
 
 					const bool any_hit = (dist == ray_distribution::shadow_ao);
-
-					// Validate BEFORE measuring. A wide tree is exactly where a collapse
-					// bug hides, and a fast wrong tree looks like a win. Previously the
-					// wide loop never touched all_valid, so "all trees agree" described
-					// the BVH2 builders only.
 					char tag[96];
 					snprintf(tag, sizeof(tag), "w%u/%s/%s", w, w == 2 ? "none" : to_string(cm), to_string(dist));
 
@@ -575,11 +548,6 @@ int main(int argc, char** argv)
 					row.set("run_id", run_id);
 					row.set("scene", scene_name);
 					row.set("builder", to_string(base));
-					// Topology is the branching factor; physical_layout is how it is STORED.
-					// This is an array of 32-byte bvh2_node child records with a variable
-					// child count -- a logical N-ary slot array, NOT a packed SIMD BVH4/BVH8
-					// or any GPU layout. Timings and byte counts here must not be read as
-					// those.
 					row.set("topology", w == 2 ? "bvh2" : (w == 4 ? "bvh4" : "bvh8"));
 					row.set("physical_layout", "slot32_aos");
 					row.set("traversal_kernel", any_hit ? "scalar_storage_lifo" : "scalar_distance_sorted");
@@ -596,16 +564,9 @@ int main(int argc, char** argv)
 					row.set("mean_fullness", cr.mean_fullness, 3);
 					row.set("collapse_ms", cr.collapse_ms, 2);
 					row.set("sah_node_cost", q.sah_cost, 4);
-					// The one to compare ACROSS widths; sah_cost charges per node
-					// and so falls with width for free.
 					row.set("sah_slot_cost", q.sah_cost_slots, 4);
 					row.set("node_bytes_per_tri", q.bytes_per_tri, 2);
-					// Depth-resolved structure lives in its own CSV. Sampling three
-					// depths discarded the profile, and the old column mixed up two
-					// different quantities (see build/collapse.h).
 					row.set("depth_profile_csv", std::filesystem::path(depth_csv).filename().string());
-					// node steps fall with width; box tests per step RISE. The
-					// trade this milestone exists to measure.
 					row.set("node_steps_per_ray", rr.node_steps_per_ray(), 3);
 					row.set("box_tests_per_ray", rr.rays ? double(rr.box_tests) / double(rr.rays) : 0.0, 3);
 					row.set("tri_tests_per_ray", rr.tri_tests_per_ray(), 3);

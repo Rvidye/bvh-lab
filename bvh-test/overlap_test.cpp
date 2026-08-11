@@ -8,40 +8,16 @@
 
 using namespace bvh;
 
-// Regression tests for two defects in the overlap profile.
-//
-// 1. `overlap_profile::nodes` was declared WITHOUT a `{}` initializer while its
-//    sibling array had one, so every count -- and every mean derived from it --
-//    started from indeterminate stack values. It could report plausible numbers
-//    on one run and nonsense on the next, which is worse than crashing.
-//
-// 2. The quantity named `mean_overlap` was
-//        sum(SA(child)) / SA(parent)
-//    which is surface-area EXPANSION, not overlap. Perfectly disjoint children
-//    produce a large value, so the column could not answer the question it was
-//    named for.
-//
-// "The value is nonzero" is NOT sufficient validation for either: uninitialized
-// memory is usually nonzero, and expansion is nonzero for disjoint boxes. These
-// tests assert exact expected values on hand-built trees instead.
-
 namespace {
 
-// A tree built by hand so every expected number can be derived on paper.
-//
-// Root spans [0,4]^3. Two children, each a 2x4x4 half, meeting exactly at x=2:
-// disjoint, sharing one face. Each child holds one leaf triangle.
 struct hand_tree
 {
 	mesh m;
 	bvh2 tree;
 
-	// `overlap_shift` slides the second child left, so the two children overlap
-	// by that much along x. 0 = touching, 2 = fully coincident.
 	void build(f32 overlap_shift)
 	{
-		// Geometry is irrelevant to the profile -- it reads node bounds only --
-		// but the mesh must be non-empty for the builder contract.
+		// Geometry is irrelevant to the profile it reads node bounds only but the mesh must be non-empty for the builder contract.
 		m.vertices = {vec3(0.0f, 0.0f, 0.0f), vec3(1.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f),
 		              vec3(3.0f, 0.0f, 0.0f), vec3(4.0f, 0.0f, 0.0f), vec3(3.0f, 1.0f, 0.0f)};
 		m.vertex_indices = {uvec3(0, 1, 2), uvec3(3, 4, 5)};
@@ -74,10 +50,7 @@ struct hand_tree
 
 } // namespace
 
-// ---------------------------------------------------------------------------
-// box_intersection_area -- the primitive the pairwise metric is built on
-// ---------------------------------------------------------------------------
-
+// box_intersection_area
 TEST(BoxIntersection, DisjointBoxesHaveZeroArea)
 {
 	const aabb a(vec3(0.0f), vec3(1.0f));
@@ -88,10 +61,6 @@ TEST(BoxIntersection, DisjointBoxesHaveZeroArea)
 
 TEST(BoxIntersection, DisjointOnASingleAxisIsStillZero)
 {
-	// The case aabb::surface_area() would get wrong: overlapping on x and z but
-	// separated on y. A naive min/max intersection has a negative y extent, and
-	// surface_area only guards min.x > max.x, so it would return a bogus
-	// (possibly negative) value.
 	const aabb a(vec3(0.0f, 0.0f, 0.0f), vec3(4.0f, 1.0f, 4.0f));
 	const aabb b(vec3(0.0f, 3.0f, 0.0f), vec3(4.0f, 4.0f, 4.0f));
 	EXPECT_FLOAT_EQ(box_intersection_area(a, b), 0.0f);
@@ -99,8 +68,6 @@ TEST(BoxIntersection, DisjointOnASingleAxisIsStillZero)
 
 TEST(BoxIntersection, TouchingBoxesHaveZeroVolumeButAFlatIntersection)
 {
-	// Sharing exactly one face: the intersection is a 0 x 4 x 4 slab, whose
-	// surface area is 2*(0*4 + 4*4 + 4*0) = 32.
 	const aabb a(vec3(0.0f, 0.0f, 0.0f), vec3(2.0f, 4.0f, 4.0f));
 	const aabb b(vec3(2.0f, 0.0f, 0.0f), vec3(4.0f, 4.0f, 4.0f));
 	EXPECT_FLOAT_EQ(box_intersection_area(a, b), 32.0f);
@@ -108,8 +75,6 @@ TEST(BoxIntersection, TouchingBoxesHaveZeroVolumeButAFlatIntersection)
 
 TEST(BoxIntersection, PartialOverlap)
 {
-	// Overlap region is [1,2] x [0,4] x [0,4] -> 1 x 4 x 4.
-	// SA = 2*(1*4 + 4*4 + 4*1) = 2*24 = 48.
 	const aabb a(vec3(0.0f, 0.0f, 0.0f), vec3(2.0f, 4.0f, 4.0f));
 	const aabb b(vec3(1.0f, 0.0f, 0.0f), vec3(4.0f, 4.0f, 4.0f));
 	EXPECT_FLOAT_EQ(box_intersection_area(a, b), 48.0f);
@@ -128,13 +93,7 @@ TEST(BoxIntersection, IdenticalBoxesGiveTheirOwnArea)
 	EXPECT_FLOAT_EQ(box_intersection_area(a, a), a.surface_area());
 }
 
-// ---------------------------------------------------------------------------
-// initialization -- the actual regression
-// ---------------------------------------------------------------------------
-
-// Deterministically fails without the `{}` fix: an empty tree touches no
-// bucket, so every counter must still read exactly zero. With the old
-// declaration these are indeterminate.
+// initialization
 TEST(OverlapProfile, EveryBucketIsZeroInitialized)
 {
 	overlap_profile p;
@@ -164,9 +123,7 @@ TEST(OverlapProfile, EveryBucketStaysZeroForAnEmptyTree)
 		ASSERT_EQ(p.depth[d].internal_nodes, 0u) << "depth " << d;
 }
 
-// ---------------------------------------------------------------------------
 // exact depth-bucket counts
-// ---------------------------------------------------------------------------
 
 TEST(OverlapProfile, RootIsTheOnlyNodeInDepthZero)
 {
@@ -197,10 +154,6 @@ TEST(OverlapProfile, EveryPopulatedBucketIsAccountedFor)
 	tree.apply_reorder(m);
 
 	const overlap_profile p = compute_overlap_profile(tree);
-
-	// The sum over every bucket must equal the tree's interior-node count, with
-	// nothing lost past the bucket limit. Checking only a few depths -- as the
-	// old three-column CSV did -- cannot catch a bucketing error.
 	u64 total = 0;
 	for (u32 d = 0; d < overlap_profile::max_depth_buckets; ++d)
 		total += p.depth[d].internal_nodes;
@@ -208,19 +161,11 @@ TEST(OverlapProfile, EveryPopulatedBucketIsAccountedFor)
 
 	EXPECT_EQ(total, u64(tree.report().interior_count));
 
-	// Every bucket below depth_count that has nodes must have consistent
-	// derived values; every bucket at or above it must be untouched.
 	for (u32 d = p.depth_count; d < overlap_profile::max_depth_buckets; ++d)
 		ASSERT_EQ(p.depth[d].internal_nodes, 0u) << "bucket " << d << " past depth_count";
 }
 
-// ---------------------------------------------------------------------------
 // the two metrics are different things
-// ---------------------------------------------------------------------------
-
-// THE headline distinction. Two disjoint children still expand the surface
-// area, so the old "mean_overlap" reported a large value for a tree with
-// literally zero overlap.
 TEST(OverlapProfile, DisjointChildrenExpandAreaButDoNotOverlap)
 {
 	hand_tree h;
@@ -230,16 +175,8 @@ TEST(OverlapProfile, DisjointChildrenExpandAreaButDoNotOverlap)
 	const depth_overlap_stats& s = p.depth[0];
 
 	ASSERT_EQ(s.internal_nodes, 1u);
+	EXPECT_NEAR(s.mean_child_area_ratio, 4.0 / 3.0, 1e-6) << "area expansion is large even though the children are disjoint";
 
-	// Parent 4x4x4  -> SA = 2*(16+16+16) = 96.
-	// Each child 2x4x4 -> SA = 2*(8+16+8) = 64. Two of them = 128.
-	// ratio = 128/96 = 4/3.
-	EXPECT_NEAR(s.mean_child_area_ratio, 4.0 / 3.0, 1e-6)
-	    << "area expansion is large even though the children are disjoint";
-
-	// The intersection is a degenerate 0x4x4 slab: zero volume, but SA 32.
-	// 32/96 = 1/3. This is the shared-face case, and it is exactly why the
-	// metric must be documented: a flat intersection is not a volume overlap.
 	EXPECT_NEAR(s.mean_pair_overlap, 32.0 / 96.0, 1e-6);
 }
 
@@ -250,10 +187,6 @@ TEST(OverlapProfile, FullyCoincidentChildrenMaximizePairOverlap)
 
 	const overlap_profile p = compute_overlap_profile(h.tree);
 	const depth_overlap_stats& s = p.depth[0];
-
-	// Children now both span x in [0,4] and [0,2] respectively... the shifted
-	// child is [0,4]x[0,4]x[0,4] intersected with the first [0,2]x[0,4]x[0,4],
-	// so the intersection is the whole first child: SA 64. 64/96 = 2/3.
 	EXPECT_NEAR(s.mean_pair_overlap, 64.0 / 96.0, 1e-6);
 	EXPECT_GT(s.mean_pair_overlap, 32.0 / 96.0) << "more overlap than the touching case";
 }
@@ -284,13 +217,7 @@ TEST(OverlapProfile, MaxAndP95TrackTheSamples)
 	EXPECT_NEAR(s.p95_pair_overlap, s.mean_pair_overlap, 1e-9);
 }
 
-// ---------------------------------------------------------------------------
 // normalization across widths
-// ---------------------------------------------------------------------------
-
-// The reason mean and sum are reported separately. C(n,2) is 1 at width 2, 6 at
-// width 4, 28 at width 8, so the SUM grows with width for structural reasons
-// that have nothing to do with geometry. Only the mean is comparable.
 TEST(OverlapProfile, PairCountFollowsTheBinomialAndOnlyTheMeanIsComparable)
 {
 	mesh m;
