@@ -1,4 +1,5 @@
 #include <build/bvh2_builder.h>
+#include <build/collapse.h>
 #include <core/mode.h>
 #include <core/trace_stats.h>
 #include <eval/quality.h>
@@ -164,6 +165,8 @@ int main(int argc, char** argv)
 	const std::string rayset_dir = opts.get("raysets", "raysets");
 	const u32 incoherent_count = opts.get_u32("rays", 262144);
 	const u32 reps = opts.get_u32("reps", 3);
+	const std::string wide_csv = opts.get("wide_csv", "results/m3_wide.csv");
+	const bool run_wide = opts.has("wide");
 
 	mesh original;
 	if (!original.load_obj(scene_path, scale))
@@ -177,8 +180,10 @@ int main(int argc, char** argv)
 
 	ensure_parent_dir(csv_path);
 	ensure_parent_dir(workload_csv);
+	ensure_parent_dir(wide_csv);
 	ensure_parent_dir(out_dir + "/x");
 
+	// baseline: brute force
 	{
 		image img(width, height);
 		const render_result bf = render_normals(original, cam, img, threads);
@@ -365,6 +370,117 @@ int main(int argc, char** argv)
 		row.set("evidence", "E1+E2");
 		row.flush(csv_path);
 		row.print(stdout);
+	}
+
+	// width x collapse method
+	if (run_wide)
+	{
+		const split_method base = split_method::binned_sah;
+
+		for (u32 w : {2u, 4u, 8u})
+		{
+			for (collapse_method cm : {collapse_method::greedy, collapse_method::dynamic_programming})
+			{
+				if (w == 2 && cm == collapse_method::dynamic_programming) continue; // width 2 is the uncollapsed tree
+
+				mesh m = original;
+
+				build_args ba;
+				ba.method = base;
+				ba.bins = bins;
+				ba.silent = true;
+
+				bvh2 tree;
+				tree.build(m, ba);
+				tree.apply_reorder(m);
+
+				collapse_report cr{};
+				cr.width = 2;
+				if (w > 2)
+				{
+					collapse_args ca;
+					ca.width = w;
+					ca.method = cm;
+					ca.silent = true;
+					cr = collapse(tree, m, ca);
+				}
+				else
+				{
+					cr = collapse_report{};
+					cr.width = 2;
+					cr.node_count = tree.report().node_count;
+					cr.interior_count = tree.report().interior_count;
+					cr.leaf_count = tree.report().leaf_count;
+					cr.max_depth = tree.report().max_depth;
+					cr.mean_fullness = 2.0;
+				}
+
+				if (tree.report().max_depth + 2 >= bvh2_stack_size)
+				{
+					LOG_ERROR("  w%u tree depth %u exceeds the traversal stack", w, tree.report().max_depth);
+					continue;
+				}
+
+				const quality_metrics q = evaluate(tree, m);
+				const overlap_profile op = compute_overlap_profile(tree);
+
+				LOG_INFO("w%u %-6s: %u nodes, depth %u, fullness %.2f, SAH %.4f",
+					w, w == 2 ? "-" : to_string(cm), cr.node_count, cr.max_depth,
+					cr.mean_fullness, q.sah_cost);
+
+				for (ray_distribution dist : all_ray_distributions)
+				{
+					rayset rs;
+					rs.scene = scene_name;
+					rayset_args ra;
+					ra.width = width; ra.height = height;
+					ra.incoherent_count = incoherent_count;
+					if (!rayset::load_or_generate(rs, rayset_dir, dist, m, tree, cam, ra)) continue;
+					if (rs.empty()) continue;
+
+					const bool any_hit = (dist == ray_distribution::shadow_ao);
+					const trace_result rr = any_hit ? occlude_rayset(tree, m, rs, threads, reps)
+						: trace_rayset(tree, m, rs, threads, reps);
+
+					metrics row;
+					row.set("scene", scene_name);
+					row.set("builder", to_string(base));
+					row.set("layout", w == 2 ? "bvh2" : (w == 4 ? "bvh4" : "bvh8"));
+					row.set("width", w);
+					row.set("collapse", w == 2 ? "none" : to_string(cm));
+					row.set("codec", "indexed_tri");
+					row.set("maintenance", "static");
+					row.set("ray_set", to_string(dist));
+					row.set("device", "cpu");
+					row.set("mode", default_mode::name);
+					row.set("nodes", cr.node_count);
+					row.set("interior", cr.interior_count);
+					row.set("max_depth", cr.max_depth);
+					row.set("mean_fullness", cr.mean_fullness, 3);
+					row.set("collapse_ms", cr.collapse_ms, 2);
+					row.set("sah_cost", q.sah_cost, 4);
+					// The one to compare ACROSS widths; sah_cost charges per node
+					// and so falls with width for free.
+					row.set("sah_cost_slots", q.sah_cost_slots, 4);
+					row.set("bytes_per_tri", q.bytes_per_tri, 2);
+					row.set("overlap_d0", op.mean_overlap[0], 4);
+					row.set("overlap_d3", op.mean_overlap[3], 4);
+					row.set("overlap_d6", op.mean_overlap[6], 4);
+					// node steps fall with width; box tests per step RISE. The
+					// trade this milestone exists to measure.
+					row.set("node_steps_per_ray", rr.node_steps_per_ray(), 3);
+					row.set("box_tests_per_ray", rr.rays ? double(rr.box_tests) / double(rr.rays) : 0.0, 3);
+					row.set("tri_tests_per_ray", rr.tri_tests_per_ray(), 3);
+					row.set("max_stack", rr.max_stack);
+					row.set("trace_s", rr.seconds, 4);
+					row.set("trace_s_cv", rr.cv(), 4);
+					row.set("mrays_s", rr.mrays_per_second(), 4);
+					row.set("source", "S-cpu");
+					row.set("reps", reps);
+					row.flush(wide_csv);
+				}
+			}
+		}
 	}
 
 	report_thread_stats();

@@ -287,6 +287,7 @@ namespace bvh
 		CHECK(!m.empty());
 
 		_args = args;
+		_width = 2;
 		_nodes.clear();
 		_prim_indices.clear();
 
@@ -384,7 +385,7 @@ namespace bvh
 
 		_report = compute_report();
 		_report.build_ms = t.elapsed_ms();
-		_report.max_depth = max_depth;
+		DCHECK_EQ(_report.max_depth, max_depth);
 
 		if (!args.silent)
 		{
@@ -447,9 +448,36 @@ namespace bvh
 		}
 
 		r.mean_leaf_size = r.leaf_count ? double(total_leaf_prims) / double(r.leaf_count) : 0.0;
-		r.max_depth = _report.max_depth;
 		r.build_ms = _report.build_ms;
+		if (!_nodes.empty())
+		{
+			std::vector<u32> depth(_nodes.size(), 0u);
+			for (u32 i = 0; i < _nodes.size(); ++i)
+			{
+				r.max_depth = max(r.max_depth, depth[i]);
+				if (!_nodes[i].ptr.is_int) continue;
+				for (u32 c = 0; c < _nodes[i].ptr.child_cnt; ++c)
+					depth[_nodes[i].ptr.child_idx + c] = depth[i] + 1;
+			}
+		}
+
 		return r;
+	}
+
+	void bvh2::replace_nodes(std::vector<bvh2_node>&& nodes, u32 width)
+	{
+		CHECK(!nodes.empty());
+		_nodes = std::move(nodes);
+		_width = width;
+
+		for (u32 i = 0; i < _nodes.size(); ++i)
+		{
+			if (!_nodes[i].ptr.is_int) continue;
+			for (u32 c = 0; c < _nodes[i].ptr.child_cnt; ++c)
+				CHECK_GT(_nodes[i].ptr.child_idx + c, i);
+		}
+
+		_report = compute_report();
 	}
 
 } // namespace bvh

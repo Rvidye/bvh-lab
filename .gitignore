@@ -365,3 +365,7 @@ FodyWeavers.xsd
 scenes/*.obj
 # Driver log output.
 log.txt
+/raysets
+/results
+/PLAN.md
+/trax/trax.args.json

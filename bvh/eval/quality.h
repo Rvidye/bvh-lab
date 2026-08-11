@@ -11,6 +11,7 @@ namespace bvh {
 	{
 		double sah_cost{ 0.0 };
 		double sah_cost_arches{ 0.0 };
+		double sah_cost_slots{ 0.0 };
 		double epo{ 0.0 };
 		double combined{ 0.0 };
 

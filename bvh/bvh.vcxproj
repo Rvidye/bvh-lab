@@ -135,6 +135,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="build\bvh2_builder.h" />
+    <ClInclude Include="build\collapse.h" />
     <ClInclude Include="bvh.h" />
     <ClInclude Include="core\aabb.h" />
     <ClInclude Include="core\bvh2.h" />
@@ -163,6 +164,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="build\bvh2_builder.cpp" />
+    <ClCompile Include="build\collapse.cpp" />
     <ClCompile Include="eval\quality.cpp" />
     <ClCompile Include="eval\rayset.cpp" />
     <ClCompile Include="eval\trace.cpp" />

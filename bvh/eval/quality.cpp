@@ -149,17 +149,26 @@ namespace bvh {
 		// SAH cost
 		// c_t * sum(A_i/A_root) over interior nodes
 		// + c_i * sum((A_l/A_root) * n_l) over leaves
-		double sah = 0.0, sah_arches = 0.0;
+		double sah = 0.0, sah_arches = 0.0, sah_slots = 0.0;
 		for (const bvh2_node& node : nodes)
 		{
 			const double a = double(node.bounds.surface_area()) / root_area;
 
-			if (node.ptr.is_int) sah += args.c_traversal * a;
-			else                 sah += args.c_intersect * a * double(node.ptr.prim_cnt);
+			if (node.ptr.is_int)
+			{
+				sah += args.c_traversal * a;
+				sah_slots += args.c_traversal * a * double(node.ptr.child_cnt);
+			}
+			else
+			{
+				sah += args.c_intersect * a * double(node.ptr.prim_cnt);
+				sah_slots += args.c_intersect * a * double(node.ptr.prim_cnt);
+			}
 			sah_arches += a * 64.0;
 		}
 		q.sah_cost = sah;
 		q.sah_cost_arches = sah_arches;
+		q.sah_cost_slots = sah_slots;
 
 		if (!args.compute_epo) return q;
 

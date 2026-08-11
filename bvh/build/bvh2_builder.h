@@ -70,11 +70,16 @@ namespace bvh
 		// Recomputes depth/leaf statistics from the current tree.
 		build_report compute_report() const;
 
+		u32 width() const { return _width; }
+
+		void replace_nodes(std::vector<bvh2_node>&& nodes, u32 width);
+
 	private:
-		std::vector<bvh2_node> _nodes;
-		std::vector<u32> _prim_indices;
-		build_args _args{};
-		build_report _report{};
+		std::vector<bvh2_node>	_nodes;
+		std::vector<u32>		_prim_indices;
+		build_args				_args{};
+		build_report			_report{};
+		u32						_width{ 2 };
 	};
 } // namespace bvh
 

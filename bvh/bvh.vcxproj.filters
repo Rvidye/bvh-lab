@@ -93,6 +93,9 @@
     <ClInclude Include="eval\trace.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="build\collapse.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="util\log.cpp">
@@ -129,6 +132,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="eval\trace.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="build\collapse.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
