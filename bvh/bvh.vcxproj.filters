@@ -105,6 +105,12 @@
     <ClInclude Include="build\collapse.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="build\collapse_weights.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="eval\direction_stats.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="util\log.cpp">
@@ -153,6 +159,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="build\collapse.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="build\collapse_weights.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="eval\direction_stats.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

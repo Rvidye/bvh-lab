@@ -5,6 +5,8 @@
 #include <core/traverse_bvh2.h>
 #include <util/mesh.h>
 
+#include <vector>
+
 namespace bvh
 {
 	constexpr u32 max_collapse_width = 31;
@@ -26,6 +28,12 @@ namespace bvh
 		f32 c_traversal{ 1.0f };
 		f32 c_intersect{ 1.0f };
 		bool silent{ false };
+
+		// Optional per-node collapse weight, one entry per source node, replacing
+		// aabb::surface_area() in the dynamic-programming cost. Null keeps the
+		// ordinary surface-area behaviour bit-for-bit.
+		const f32* node_weight{ nullptr };
+		u32        node_weight_count{ 0 };
 	};
 
 	// Worst-case traversal stack for a width-W tree of the given emitted depth:
@@ -57,7 +65,12 @@ namespace bvh
 		u32 fullness_histogram[max_collapse_width + 1]{};
 	};
 
-	collapse_report collapse(bvh2& tree, const mesh& m, const collapse_args& args = {});
+	// emitted_src, when supplied, is resized to the SOURCE node count and set to 1
+	// for every binary node the collapse kept as a wide node or wide leaf, and 0
+	// for every node absorbed into its parent. Comparing two of these gives the
+	// fraction of collapse decisions a weight change altered.
+	collapse_report collapse(bvh2& tree, const mesh& m, const collapse_args& args = {},
+		std::vector<u8>* emitted_src = nullptr);
 
 	// Per-depth structural statistics.
 	struct depth_overlap_stats

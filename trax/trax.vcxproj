@@ -42,11 +42,13 @@
   <ItemGroup>
     <ClCompile Include="direction_d.cpp" />
     <ClCompile Include="phase0.cpp" />
+    <ClCompile Include="wide_collapse.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="direction_d.h" />
     <ClInclude Include="phase0.h" />
+    <ClInclude Include="wide_collapse.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\bvh\bvh.vcxproj">

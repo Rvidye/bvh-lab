@@ -116,7 +116,7 @@ namespace bvh
 		constexpr u64 legacy_dp_bytes_per_node =
 			sizeof(u32) * 2 + sizeof(decision) * (max_collapse_width + 1);
 
-		std::vector<bvh2_node> collapse_dp(const std::vector<bvh2_node>& src, const bvh2& tree, const mesh& m, const collapse_args& args, u64& scratch_bytes)
+		std::vector<bvh2_node> collapse_dp(const std::vector<bvh2_node>& src, const bvh2& tree, const mesh& m, const collapse_args& args, u64& scratch_bytes, std::vector<u8>* emitted_src)
 		{
 			const u32 width = args.width;
 
@@ -129,6 +129,19 @@ namespace bvh
 				+ u64(table.size()) * sizeof(decision);
 
 			auto cache_at = [&](u32 n) -> decision* { return table.data() + size_t(n) * stride; };
+
+			// The directional weight enters here and nowhere else: it replaces the
+			// node's surface area in the cost, leaving every comparison, tie-break
+			// and emission rule untouched.
+			const f32* node_weight = nullptr;
+			if (args.node_weight && args.node_weight_count == src.size())
+				node_weight = args.node_weight;
+			else
+				CHECK_MSG(args.node_weight == nullptr,
+					"collapse: node_weight has %u entries but the tree has %zu nodes",
+					args.node_weight_count, src.size());
+
+			if (emitted_src) emitted_src->assign(src.size(), 0u);
 
 			// bottom up, children always have a higher index that their parent
 			for (i32 n = static_cast<i32>(src.size()) - 1; n >= 0; --n)
@@ -150,7 +163,7 @@ namespace bvh
 					c.prim_idx = node.ptr.prim_idx;
 				}
 
-				const f32 area = node.bounds.surface_area();
+				const f32 area = node_weight ? node_weight[n] : node.bounds.surface_area();
 
 				// leaf cost
 				// INFINITY when the leaf policy forrbits it, which is how a subtree is prevented from collapsing past max_leaf_size
@@ -229,6 +242,8 @@ namespace bvh
 				bvh2_node& out = dst[e.dst_index];
 				out = node;
 
+				if (emitted_src) (*emitted_src)[e.it.node] = 1u;
+
 				const decision d = cache_at(e.it.node)[e.it.slot];
 
 				if (d.type == d_internal)
@@ -281,7 +296,7 @@ namespace bvh
 		}
 	} // namespace
 
-	collapse_report collapse(bvh2& tree, const mesh& m, const collapse_args& args)
+	collapse_report collapse(bvh2& tree, const mesh& m, const collapse_args& args, std::vector<u8>* emitted_src)
 	{
 		CHECK(!tree.empty());
 		CHECK_GE(args.width, 2u);
@@ -294,7 +309,7 @@ namespace bvh
 		u64 scratch_bytes = 0;
 		std::vector<bvh2_node> dst = (args.method == collapse_method::greedy)
 			? collapse_greedy(src, args.width)
-			: collapse_dp(src, tree, m, args, scratch_bytes);
+			: collapse_dp(src, tree, m, args, scratch_bytes, emitted_src);
 
 		tree.replace_nodes(std::move(dst), args.width);
 
