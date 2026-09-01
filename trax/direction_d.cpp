@@ -171,10 +171,11 @@ namespace
 
 	// -------------------------------------------------------------- validation
 
-	// The complete ray set against the brute-force oracle. Same policy as the M1
-	// harness: a coordinate that cannot be validated publishes no row.
+	// By default, check the complete ray set against the brute-force oracle. The
+	// explicit sample limit supports large-scene screening and is recorded in the
+	// row label; a coordinate that cannot be validated publishes no row.
 	bool validate_rayset_full(const bvh2& tree, const mesh& m, const rayset& rs, bool any_hit,
-		const char* tag, u32 max_report = 5)
+		const char* tag, u32 validation_samples, u32 max_report = 5)
 	{
 		const bvh2_view view = tree.view();
 		const auto      prims = make_prims(m, tree);
@@ -182,8 +183,17 @@ namespace
 		u64 mismatches = 0, ties = 0;
 		std::vector<u32> scratch;
 
-		for (u32 i = 0; i < rs.size(); ++i)
+		const u32 checked = validation_samples
+			? std::min(validation_samples, rs.size())
+			: rs.size();
+
+		for (u32 sample = 0; sample < checked; ++sample)
 		{
+			// Midpoints of equal-width intervals cover the complete ray-index range
+			// deterministically and remain unique when checked <= rs.size().
+			const u32 i = checked == rs.size()
+				? sample
+				: static_cast<u32>(((2ull * sample + 1ull) * rs.size()) / (2ull * checked));
 			const ray r = rs.get(i);
 
 			if (any_hit)
@@ -221,13 +231,14 @@ namespace
 
 		if (mismatches)
 		{
-			LOG_ERROR("  [%s] %llu/%u rays disagree with the oracle", tag,
-				(unsigned long long)mismatches, rs.size());
+			LOG_ERROR("  [%s] %llu/%u checked rays disagree with the oracle", tag,
+				(unsigned long long)mismatches, checked);
 			return false;
 		}
 
-		LOG_INFO("  [%s] %u/%u rays agree with the oracle (%llu resolved by tie set)",
-			tag, rs.size(), rs.size(), (unsigned long long)ties);
+		LOG_INFO("  [%s] %u/%u %s rays agree with the oracle (%llu resolved by tie set)",
+			tag, checked, checked, checked == rs.size() ? "complete" : "sampled",
+			(unsigned long long)ties);
 		return true;
 	}
 
@@ -493,7 +504,8 @@ bool run_direction_d(const mesh& original, const direction_d_args& args)
 				break;
 			}
 
-			if (args.validate && !validate_rayset_full(tree, m, rs, any_hit, tag))
+			if (args.validate && !validate_rayset_full(tree, m, rs, any_hit, tag,
+				args.validation_samples))
 			{
 				coordinate_ok = false;
 				break;
@@ -645,7 +657,11 @@ bool run_direction_d(const mesh& original, const direction_d_args& args)
 			row.set("height", best.height);
 			row.set("incoherent_count", best.incoherent_count);
 			row.set("query_kind", to_string(kind));
-			row.set("validation", args.validate ? "oracle_match" : "skipped");
+			const bool sampled_validation = args.validate && args.validation_samples > 0
+				&& args.validation_samples < best.rays.size();
+			row.set("validation", args.validate
+				? (sampled_validation ? "oracle_sample_match" : "oracle_match")
+				: "skipped");
 
 			row.set("rays", i64(t.rays));
 			row.set("rays_with_pairs", i64(t.rays_with_pairs));

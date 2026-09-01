@@ -9,7 +9,9 @@ namespace bvh
 {
 	// binary bvh traversal
 
-	constexpr u32 bvh2_stack_size = 64;
+	// San Miguel's max-leaf-size-1 SAH tree reaches depth 62. Keep enough
+	// headroom for large-scene analysis without changing traversal decisions.
+	constexpr u32 bvh2_stack_size = 128;
 
 	template <typename Mode = default_mode, typename PrimIsect, typename Stats>
 	BVH_DEVI bool intersect(const bvh2_view& bvh, const ray& r, hit& h, PrimIsect&& prim, Stats& stats)

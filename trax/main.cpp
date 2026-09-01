@@ -204,6 +204,7 @@ namespace
 			"  --threads=<n>          0 = hardware        (default 0)\n"
 			"  --direction_d          also run the Direction D mechanism pass\n"
 			"  --direction_d_only     run ONLY Direction D, nothing else\n"
+			"  --direction_d_validation_rays=<n>  sampled oracle rays (0 = all)\n"
 			"  --git_commit=<sha>     recorded verbatim into every Direction D row\n"
 			"  --dirty=<0|1>          recorded verbatim into every Direction D row\n"
 			"  --verbose              verbose logging\n"
@@ -301,6 +302,7 @@ int main(int argc, char** argv)
 		dda.incoherent_count = incoherent_count;
 		dda.threads = 1u; // frozen for the first experiment
 		dda.validate = validate;
+		dda.validation_samples = opts.get_u32("direction_d_validation_rays", 0u);
 
 		direction_d_ok = run_direction_d(original, dda);
 

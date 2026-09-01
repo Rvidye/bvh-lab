@@ -29,6 +29,10 @@ struct direction_d_args
 	bvh::u32 threads{ 1 };
 
 	bool validate{ true };
+	// Zero validates every ray. A nonzero value selects that many evenly spaced
+	// rays for large-scene screening where a full O(rays * triangles) oracle is
+	// impractical.
+	bvh::u32 validation_samples{ 0 };
 };
 
 // Returns false if any coordinate failed to build, validate or write. A failed
