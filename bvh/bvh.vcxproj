@@ -149,6 +149,7 @@
     <ClInclude Include="core\traverse_bvh2.h" />
     <ClInclude Include="core\vec.h" />
     <ClInclude Include="eval\directional_geometry.h" />
+    <ClInclude Include="eval\directional_probe.h" />
     <ClInclude Include="eval\quality.h" />
     <ClInclude Include="eval\rayset.h" />
     <ClInclude Include="eval\trace.h" />
@@ -167,6 +168,7 @@
     <ClCompile Include="build\bvh2_builder.cpp" />
     <ClCompile Include="build\collapse.cpp" />
     <ClCompile Include="eval\directional_geometry.cpp" />
+    <ClCompile Include="eval\directional_probe.cpp" />
     <ClCompile Include="eval\quality.cpp" />
     <ClCompile Include="eval\rayset.cpp" />
     <ClCompile Include="eval\trace.cpp" />

@@ -187,11 +187,15 @@ accuracy(s) = correct(s) / discordant_pairs
 Ties are in the denominator and are **never** counted as correct and never as
 half-correct. Tie counts are reported separately for every score.
 
-**Frozen invalid rule:** if a score is undefined for either child of a pair
-(only possible for `directional` and `box_projected_ratio`, when `B_box` is not
-positive/finite), that pair is recorded as a **tie** for that score — that is,
-not correct, still in the denominator. Invalid candidate events are also
-counted separately in the `invalid` ratio bin.
+**Frozen invalid rule:** if a score is undefined for either child of a pair,
+that pair is recorded as a **tie** for that score — that is, not correct, still
+in the denominator. A score is undefined when the area it divides by is not
+positive and finite: `directional` when `B_box(child)` is not positive,
+`box_projected_ratio` when `B_box(parent)` is not positive, `surface_density`
+when `SA(child_box)` is not positive, and `box_surface_ratio` when
+`SA(parent_box)` is not positive. `primitive_count` is always defined. Invalid
+directional candidate events are additionally counted in the `invalid` ratio
+bin.
 
 The denominator `discordant_pairs` is therefore identical for all five scores,
 so accuracy differences are directly comparable.

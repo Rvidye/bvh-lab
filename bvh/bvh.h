@@ -41,6 +41,9 @@ namespace bvh
 	struct directional_geometry;
 	struct directional_ratio;
 	struct unit_direction;
+	struct candidate_event;
+	struct directional_totals;
+	struct directional_analysis_result;
 
 } // namespace bvh
 

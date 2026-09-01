@@ -87,6 +87,9 @@
     <ClInclude Include="eval\directional_geometry.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="eval\directional_probe.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="eval\quality.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -129,6 +132,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="eval\directional_geometry.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="eval\directional_probe.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="eval\quality.cpp">
