@@ -21,7 +21,7 @@
     <ClCompile Include="phase0.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="wide_collapse.cpp">
+    <ClCompile Include="geometry_collapse.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="main.cpp">
@@ -35,7 +35,7 @@
     <ClInclude Include="phase0.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="wide_collapse.h">
+    <ClInclude Include="geometry_collapse.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

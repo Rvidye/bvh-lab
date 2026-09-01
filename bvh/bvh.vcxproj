@@ -136,7 +136,7 @@
   <ItemGroup>
     <ClInclude Include="build\bvh2_builder.h" />
     <ClInclude Include="build\collapse.h" />
-    <ClInclude Include="build\collapse_weights.h" />
+    <ClInclude Include="build\geometry_loss.h" />
     <ClInclude Include="bvh.h" />
     <ClInclude Include="core\aabb.h" />
     <ClInclude Include="core\bvh2.h" />
@@ -149,7 +149,6 @@
     <ClInclude Include="core\trace_stats.h" />
     <ClInclude Include="core\traverse_bvh2.h" />
     <ClInclude Include="core\vec.h" />
-    <ClInclude Include="eval\direction_stats.h" />
     <ClInclude Include="eval\directional_geometry.h" />
     <ClInclude Include="eval\directional_probe.h" />
     <ClInclude Include="eval\quality.h" />
@@ -170,8 +169,7 @@
   <ItemGroup>
     <ClCompile Include="build\bvh2_builder.cpp" />
     <ClCompile Include="build\collapse.cpp" />
-    <ClCompile Include="build\collapse_weights.cpp" />
-    <ClCompile Include="eval\direction_stats.cpp" />
+    <ClCompile Include="build\geometry_loss.cpp" />
     <ClCompile Include="eval\directional_geometry.cpp" />
     <ClCompile Include="eval\directional_probe.cpp" />
     <ClCompile Include="eval\quality.cpp" />

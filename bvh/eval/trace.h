@@ -44,6 +44,9 @@ namespace bvh {
 		u64 tri_tests{ 0 };
 		u32 max_stack{ 0 };
 
+		u64 box_hits{ 0 };      // children pushed
+		u64 pruned_pops{ 0 };   // entries popped and discarded by the incumbent
+
 		u32    reps{ 1 };
 		double seconds_min{ 0.0 };
 		double seconds_stddev{ 0.0 };

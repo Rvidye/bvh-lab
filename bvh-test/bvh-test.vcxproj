@@ -52,6 +52,7 @@
     <ClCompile Include="collapse_test.cpp" />
     <ClCompile Include="directional_geometry_test.cpp" />
     <ClCompile Include="directional_probe_test.cpp" />
+    <ClCompile Include="geometry_loss_test.cpp" />
     <ClCompile Include="overlap_test.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="mode_test.cpp" />

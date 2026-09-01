@@ -1,4 +1,21 @@
-# Width-8 directional wide collapse — measured result
+> # NOT A DIRECTION D RESULT
+>
+> **This is a ray-conditioned ablation that does not test the intended
+> hypothesis.** It derived the collapse weight from *camera ray directions*
+> (`W = E[|d|]` over View A primary rays), which makes it a camera-specialised
+> BVH experiment, not the geometry-only Direction D experiment.
+>
+> Its numbers must not be presented as Direction D evidence. The Direction D
+> result, which uses information derived exclusively from the triangles inside
+> each binary subtree and no rays at all, is in
+> `experiments/geometry_wide_collapse/RESULTS-SAN-MIGUEL.md`.
+>
+> The code that produced this ablation (`bvh/eval/direction_stats.*`,
+> `bvh/build/collapse_weights.*`, `trax/wide_collapse.*`) was removed from the
+> tree so it cannot be confused with the geometry-only path. It is recoverable
+> from git history at commit `f5189e1`.
+
+# Ray-conditioned width-8 collapse ablation (superseded)
 
 **Date:** 2026-09-01 · **Run id:** `w8_dir_2026_09_01` · **Base commit:** `af0cb56`
 

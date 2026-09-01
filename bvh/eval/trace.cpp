@@ -31,6 +31,7 @@ namespace bvh {
 		struct thread_totals
 		{
 			u64 node_steps{ 0 }, prim_steps{ 0 }, box_tests{ 0 }, tri_tests{ 0 }, hits{ 0 };
+			u64 box_hits{ 0 }, pruned_pops{ 0 };
 			u32 max_stack{ 0 };
 
 			void merge(const trace_stats& s)
@@ -39,6 +40,8 @@ namespace bvh {
 				prim_steps += s.prim_steps;
 				box_tests += s.box_tests;
 				tri_tests += s.tri_tests;
+				box_hits += s.box_hits;
+				pruned_pops += s.pruned_pops;
 				if (s.max_stack > max_stack) max_stack = s.max_stack;
 			}
 		};
@@ -55,6 +58,8 @@ namespace bvh {
 				total.prim_steps += t.prim_steps;
 				total.box_tests += t.box_tests;
 				total.tri_tests += t.tri_tests;
+				total.box_hits += t.box_hits;
+				total.pruned_pops += t.pruned_pops;
 				total.hits += t.hits;
 				if (t.max_stack > total.max_stack) total.max_stack = t.max_stack;
 			}
@@ -70,6 +75,8 @@ namespace bvh {
 			r.prim_steps = shared.total.prim_steps;
 			r.box_tests = shared.total.box_tests;
 			r.tri_tests = shared.total.tri_tests;
+			r.box_hits = shared.total.box_hits;
+			r.pruned_pops = shared.total.pruned_pops;
 			r.max_stack = shared.total.max_stack;
 			return r;
 		}

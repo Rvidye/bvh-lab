@@ -17,7 +17,7 @@
 
 #include "direction_d.h"
 #include "phase0.h"
-#include "wide_collapse.h"
+#include "geometry_collapse.h"
 
 #include <chrono>
 #include <ctime>
@@ -207,8 +207,8 @@ namespace
 			"  --direction_d          also run the Direction D mechanism pass\n"
 			"  --direction_d_only     run ONLY Direction D, nothing else\n"
 			"  --phase0               run ONLY the Phase 0 feasibility probe\n"
-			"  --wide_collapse        run ONLY the width-8 directional collapse experiment\n"
-			"  --cameras=<path.csv>   frozen camera set for --wide_collapse\n"
+			"  --geometry_collapse    run ONLY the geometry-derived BVH8 collapse experiment\n"
+			"  --cameras=<path.csv>   frozen evaluation cameras\n"
 			"  --phase0_candidates=<n>  camera candidates to screen  (default 64)\n"
 			"  --phase0_screen_res=<n>  camera screening resolution  (default 64)\n"
 			"  --direction_d_validation_rays=<n>  sampled oracle rays (0 = all)\n"
@@ -271,29 +271,30 @@ int main(int argc, char** argv)
 	const std::string depth_csv = opts.get("depth_csv", (run_dir + "/m3_depth_profile.csv").c_str());
 	const bool run_direction_d_only = opts.has("direction_d_only");
 	const bool run_phase0_only = opts.has("phase0");
-	const bool run_wide_collapse_only = opts.has("wide_collapse");
+	const bool run_geometry_collapse_only = opts.has("geometry_collapse");
 
-	// The width-8 directional collapse experiment loads the scene itself.
-	if (run_wide_collapse_only)
+	// The geometry-derived BVH8 collapse experiment loads the scene itself.
+	if (run_geometry_collapse_only)
 	{
-		wide_collapse_args wc;
-		wc.run_id = run_id;
-		wc.run_dir = run_dir;
-		wc.scene_path = scene_path;
-		wc.scene_name = std::filesystem::path(scene_path).filename().string();
-		wc.cameras_csv = opts.get("cameras", "experiments/wide_collapse/cameras.csv");
-		wc.git_commit = opts.get("git_commit", "");
-		wc.dirty = opts.get_u32("dirty", 0u) != 0u;
-		wc.width = width;
-		wc.height = height;
-		wc.bins = bins;
-		wc.threads = threads;
+		geometry_collapse_args gc;
+		gc.run_id = run_id;
+		gc.run_dir = run_dir;
+		gc.scene_path = scene_path;
+		gc.scene_name = std::filesystem::path(scene_path).filename().string();
+		gc.cameras_csv = opts.get("cameras", "experiments/wide_collapse/cameras.csv");
+		gc.image_dir = opts.get("image_dir", "experiments/geometry_wide_collapse");
+		gc.git_commit = opts.get("git_commit", "");
+		gc.dirty = opts.get_u32("dirty", 0u) != 0u;
+		gc.width = width;
+		gc.height = height;
+		gc.bins = bins;
+		gc.threads = threads;
 
-		const bool ok = run_wide_collapse(wc);
+		const bool ok = run_geometry_collapse(gc);
 		report_thread_stats();
 		print_stats(stdout);
-		if (!ok) LOG_ERROR("width-8 directional collapse reported a failure");
-		else     LOG_INFO("width-8 directional collapse complete");
+		if (!ok) LOG_ERROR("geometry-derived BVH8 collapse reported a failure");
+		else     LOG_INFO("geometry-derived BVH8 collapse complete");
 		log_shutdown();
 		return ok ? 0 : 1;
 	}

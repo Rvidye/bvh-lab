@@ -130,16 +130,16 @@ namespace bvh
 
 			auto cache_at = [&](u32 n) -> decision* { return table.data() + size_t(n) * stride; };
 
-			// The directional weight enters here and nowhere else: it replaces the
-			// node's surface area in the cost, leaving every comparison, tie-break
-			// and emission rule untouched.
-			const f32* node_weight = nullptr;
-			if (args.node_weight && args.node_weight_count == src.size())
-				node_weight = args.node_weight;
+			// The geometry loss enters here and nowhere else: it is added to the
+			// internal-node term only, leaving the leaf term, every comparison,
+			// tie-break and emission rule untouched.
+			const f32* node_internal_area = nullptr;
+			if (args.node_internal_area && args.node_internal_area_count == src.size())
+				node_internal_area = args.node_internal_area;
 			else
-				CHECK_MSG(args.node_weight == nullptr,
-					"collapse: node_weight has %u entries but the tree has %zu nodes",
-					args.node_weight_count, src.size());
+				CHECK_MSG(args.node_internal_area == nullptr,
+					"collapse: node_internal_area has %u entries but the tree has %zu nodes",
+					args.node_internal_area_count, src.size());
 
 			if (emitted_src) emitted_src->assign(src.size(), 0u);
 
@@ -163,7 +163,10 @@ namespace bvh
 					c.prim_idx = node.ptr.prim_idx;
 				}
 
-				const f32 area = node_weight ? node_weight[n] : node.bounds.surface_area();
+				// The leaf term always uses the node's own surface area. Only the
+				// internal term may carry an added loss.
+				const f32 area = node.bounds.surface_area();
+				const f32 internal_area = node_internal_area ? node_internal_area[n] : area;
 
 				// leaf cost
 				// INFINITY when the leaf policy forrbits it, which is how a subtree is prevented from collapsing past max_leaf_size
@@ -184,7 +187,7 @@ namespace bvh
 
 					for (u32 k = 1; k < width; ++k)
 					{
-						const f32 cost = args.c_traversal * area + cd_l[k].cost + cd_r[width - k].cost;
+						const f32 cost = args.c_traversal * internal_area + cd_l[k].cost + cd_r[width - k].cost;
 						if (cost < cd_n[1].cost)
 						{
 							cd_n[1].dist_left = static_cast<u8>(k);

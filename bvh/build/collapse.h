@@ -29,11 +29,16 @@ namespace bvh
 		f32 c_intersect{ 1.0f };
 		bool silent{ false };
 
-		// Optional per-node collapse weight, one entry per source node, replacing
-		// aabb::surface_area() in the dynamic-programming cost. Null keeps the
-		// ordinary surface-area behaviour bit-for-bit.
-		const f32* node_weight{ nullptr };
-		u32        node_weight_count{ 0 };
+		// Optional per-node area used ONLY by the internal-node term of the
+		// dynamic-programming cost:
+		//     C_internal = c_traversal * node_internal_area[n]
+		//     C_leaf     = c_intersect * prim_count * SA(n)     <- never changed
+		// One entry per source node. Null keeps the ordinary surface-area
+		// behaviour bit-for-bit. The leaf term always uses the node's own
+		// surface area, so a loss added here can never silently alter the
+		// primitive-intersection term.
+		const f32* node_internal_area{ nullptr };
+		u32        node_internal_area_count{ 0 };
 	};
 
 	// Worst-case traversal stack for a width-W tree of the given emitted depth:

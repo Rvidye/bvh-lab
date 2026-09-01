@@ -1,0 +1,2 @@
+run_id,git_commit,dirty,scene,view,heatmap_shared_max_steps,heatmap_baseline,heatmap_directional,color_render,heatmap_metric
+geo_w8_2026_09_01,f5189e1,1,san-miguel.obj,A,56,experiments/geometry_wide_collapse/san-miguel_view-A_w8-sah_traversal-heatmap.png,experiments/geometry_wide_collapse/san-miguel_view-A_w8-direction-D-mu1_traversal-heatmap.png,experiments/geometry_wide_collapse/san-miguel_view-A_color.png,trace_stats::total_steps (node_steps + prim_steps) per pixel
