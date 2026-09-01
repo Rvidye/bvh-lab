@@ -2,6 +2,7 @@
 
 #include <bvh.h>
 #include <build/bvh2_builder.h>
+#include <core/traverse_bvh2.h>
 #include <util/mesh.h>
 
 namespace bvh
@@ -27,6 +28,15 @@ namespace bvh
 		bool silent{ false };
 	};
 
+	// Worst-case traversal stack for a width-W tree of the given emitted depth:
+	// each internal pop replaces one entry with up to W children, so the stack
+	// grows by at most (W - 1) per level. Capacity only; it never changes a
+	// traversal decision.
+	constexpr u32 required_stack_depth(u32 width, u32 emitted_max_depth)
+	{
+		return 1u + (width - 1u) * emitted_max_depth;
+	}
+
 	struct collapse_report
 	{
 		double collapse_ms{ 0.0 };
@@ -35,6 +45,12 @@ namespace bvh
 		u32 interior_count{ 0 };
 		u32 leaf_count{ 0 };
 		u32 max_depth{ 0 };
+
+		// Feasibility instrumentation.
+		u64 scratch_bytes{ 0 };          // dynamic-programming scratch actually allocated
+		u64 legacy_scratch_bytes{ 0 };   // what the fixed max-width table would have cost
+		u32 required_stack{ 0 };         // required_stack_depth(width, max_depth)
+		bool stack_bound_ok{ false };    // required_stack <= bvh2_stack_size
 		// mean children per interior mode
 		double mean_fullness{ 0.0 };
 		// histogram[c] = interior nodes with exactly c children

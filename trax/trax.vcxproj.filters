@@ -18,12 +18,18 @@
     <ClCompile Include="direction_d.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="phase0.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="direction_d.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="phase0.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

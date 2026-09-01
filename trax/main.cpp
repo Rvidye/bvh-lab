@@ -16,6 +16,7 @@
 #include <util/timer.h>
 
 #include "direction_d.h"
+#include "phase0.h"
 
 #include <chrono>
 #include <ctime>
@@ -204,6 +205,9 @@ namespace
 			"  --threads=<n>          0 = hardware        (default 0)\n"
 			"  --direction_d          also run the Direction D mechanism pass\n"
 			"  --direction_d_only     run ONLY Direction D, nothing else\n"
+			"  --phase0               run ONLY the Phase 0 feasibility probe\n"
+			"  --phase0_candidates=<n>  camera candidates to screen  (default 64)\n"
+			"  --phase0_screen_res=<n>  camera screening resolution  (default 64)\n"
 			"  --direction_d_validation_rays=<n>  sampled oracle rays (0 = all)\n"
 			"  --git_commit=<sha>     recorded verbatim into every Direction D row\n"
 			"  --dirty=<0|1>          recorded verbatim into every Direction D row\n"
@@ -263,6 +267,31 @@ int main(int argc, char** argv)
 	const bool run_wide = opts.has("wide");
 	const std::string depth_csv = opts.get("depth_csv", (run_dir + "/m3_depth_profile.csv").c_str());
 	const bool run_direction_d_only = opts.has("direction_d_only");
+	const bool run_phase0_only = opts.has("phase0");
+
+	// Phase 0 loads the scene itself so it can time the load; it runs nothing else.
+	if (run_phase0_only)
+	{
+		phase0_args p0;
+		p0.run_id = run_id;
+		p0.run_dir = run_dir;
+		p0.scene_path = scene_path;
+		p0.scene_name = std::filesystem::path(scene_path).filename().string();
+		p0.git_commit = opts.get("git_commit", "");
+		p0.dirty = opts.get_u32("dirty", 0u) != 0u;
+		p0.screen_res = opts.get_u32("phase0_screen_res", 64u);
+		p0.candidates = opts.get_u32("phase0_candidates", 64u);
+		p0.oracle_probe_rays = opts.get_u32("phase0_oracle_rays", 0u);
+		p0.threads = threads;
+
+		const bool ok = run_phase0(p0);
+		report_thread_stats();
+		print_stats(stdout);
+		if (!ok) LOG_ERROR("Phase 0 reported a failure");
+		else     LOG_INFO("Phase 0 complete");
+		log_shutdown();
+		return ok ? 0 : 1;
+	}
 
 	mesh original;
 	if (!original.load_obj(scene_path, scale))

@@ -13,6 +13,8 @@ namespace bvh
 		BVH_DEVI void box_test() {}
 		BVH_DEVI void tri_test() {}
 		BVH_DEVI void stack_depth(u32) {}
+		BVH_DEVI void box_hit() {}
+		BVH_DEVI void pruned_pop() {}
 		BVH_DEVI void touch(const void*, u32) {}
 	};
 
@@ -25,11 +27,18 @@ namespace bvh
 		u32 tri_tests{ 0 };
 		u32 max_stack{ 0 };
 
+		// Children whose box test passed, i.e. entries pushed on the stack.
+		u32 box_hits{ 0 };
+		// Entries popped and discarded because the incumbent already beat them.
+		u32 pruned_pops{ 0 };
+
 		BVH_DEVI void node_step() { ++node_steps; }
 		BVH_DEVI void prim_step() { ++prim_steps; }
 		BVH_DEVI void box_test() { ++box_tests; }
 		BVH_DEVI void tri_test() { ++tri_tests; }
 		BVH_DEVI void stack_depth(u32 d) { if (d > max_stack) max_stack = d; }
+		BVH_DEVI void box_hit() { ++box_hits; }
+		BVH_DEVI void pruned_pop() { ++pruned_pops; }
 
 		BVH_DEVI void touch(const void*, u32) {}
 

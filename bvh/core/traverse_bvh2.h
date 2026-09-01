@@ -9,9 +9,15 @@ namespace bvh
 {
 	// binary bvh traversal
 
-	// San Miguel's max-leaf-size-1 SAH tree reaches depth 62. Keep enough
-	// headroom for large-scene analysis without changing traversal decisions.
-	constexpr u32 bvh2_stack_size = 128;
+	// Capacity only; this constant never changes a traversal decision.
+	// A width-W tree needs 1 + (W-1) * emitted_depth entries in the worst case,
+	// because each internal pop replaces one entry with up to W children. San
+	// Miguel's max-leaf-size-1 binary SAH tree alone reaches depth 62. The value
+	// below is frozen from the Phase-0 measurements in experiments/wide_collapse:
+	// the largest requirement measured over the four large scenes at widths 4, 8
+	// and 16 is 721 (san-miguel, width 16, emitted depth 48). 1024 leaves headroom.
+	// bvh::required_stack_depth() must be checked against it for every tree.
+	constexpr u32 bvh2_stack_size = 1024;
 
 	template <typename Mode = default_mode, typename PrimIsect, typename Stats>
 	BVH_DEVI bool intersect(const bvh2_view& bvh, const ray& r, hit& h, PrimIsect&& prim, Stats& stats)
@@ -38,7 +44,7 @@ namespace bvh
 		do
 		{
 			const stack_entry entry = stack[--stack_size];
-			if (entry.t >= h.t) continue;
+			if (entry.t >= h.t) { stats.pruned_pop(); continue; }
 
 			if (entry.ptr.is_int)
 			{
@@ -55,6 +61,8 @@ namespace bvh
 					const f32 t = intersect<Mode>(bvh.nodes[node_id].bounds, r, inv_d);
 					if (t < h.t)
 					{
+						stats.box_hit();
+
 						u32 j = stack_size++;
 						for (; j > max_insert_depth; --j)
 						{
@@ -115,7 +123,10 @@ namespace bvh
 					const u32 node_id = ptr.child_idx + i;
 					stats.box_test();
 					if (intersect<Mode>(bvh.nodes[node_id].bounds, r, inv_d) < r.t_max)
+					{
+						stats.box_hit();
 						stack[stack_size++] = bvh.nodes[node_id].ptr;
+					}
 				}
 				stats.stack_depth(stack_size);
 			}

@@ -102,30 +102,47 @@ namespace bvh
 			f32 cost{ INFINITY };
 		};
 
-		struct dp_cache
+		// One decision row per node, sized to the REQUESTED width rather than to
+		// max_collapse_width. The DP only ever indexes [1, width-1], so a row of
+		// (width + 1) entries is sufficient; the fixed 32-entry table cost 264 B
+		// per node regardless of width, which is ~20x more than width 8 needs and
+		// does not fit for a 20M-node tree.
+		struct dp_prims
 		{
 			u32 prim_cnt{ 0 };
 			u32 prim_idx{ 0 };
-			decision decisions[max_collapse_width + 1];
 		};
 
-		std::vector<bvh2_node> collapse_dp(const std::vector<bvh2_node>& src, const bvh2& tree, const mesh& m, const collapse_args& args)
+		constexpr u64 legacy_dp_bytes_per_node =
+			sizeof(u32) * 2 + sizeof(decision) * (max_collapse_width + 1);
+
+		std::vector<bvh2_node> collapse_dp(const std::vector<bvh2_node>& src, const bvh2& tree, const mesh& m, const collapse_args& args, u64& scratch_bytes)
 		{
 			const u32 width = args.width;
-			std::vector<dp_cache> cache(src.size());
+
+			// Flattened [node][slot] decision table.
+			const u32 stride = width + 1u;
+			std::vector<dp_prims>  prims(src.size());
+			std::vector<decision>  table(size_t(src.size()) * size_t(stride));
+
+			scratch_bytes = u64(prims.size()) * sizeof(dp_prims)
+				+ u64(table.size()) * sizeof(decision);
+
+			auto cache_at = [&](u32 n) -> decision* { return table.data() + size_t(n) * stride; };
 
 			// bottom up, children always have a higher index that their parent
 			for (i32 n = static_cast<i32>(src.size()) - 1; n >= 0; --n)
 			{
 				const bvh2_node& node = src[n];
-				dp_cache& c = cache[n];
+				dp_prims& c = prims[n];
+				decision* cd_n = cache_at(static_cast<u32>(n));
 
 				if (node.ptr.is_int)
 				{
 					const u32 l = node.ptr.child_idx + 0;
 					const u32 r = node.ptr.child_idx + 1;
-					c.prim_cnt = cache[l].prim_cnt + cache[r].prim_cnt;
-					c.prim_idx = cache[l].prim_idx;
+					c.prim_cnt = prims[l].prim_cnt + prims[r].prim_cnt;
+					c.prim_idx = prims[l].prim_idx;
 				}
 				else
 				{
@@ -141,50 +158,52 @@ namespace bvh
 				if (c.prim_cnt <= args.max_leaf_size)
 					leaf_cost = args.c_intersect * static_cast<f32>(c.prim_cnt) * area;
 
-				c.decisions[1].cost = leaf_cost;
-				c.decisions[1].type = d_leaf;
-				if (c.decisions[1].cost != c.decisions[1].cost) c.decisions[1].cost = INFINITY;
+				cd_n[1].cost = leaf_cost;
+				cd_n[1].type = d_leaf;
+				if (cd_n[1].cost != cd_n[1].cost) cd_n[1].cost = INFINITY;
 
 				if (node.ptr.is_int)
 				{
 					const u32 l = node.ptr.child_idx + 0;
 					const u32 r = node.ptr.child_idx + 1;
+					const decision* cd_l = cache_at(l);
+					const decision* cd_r = cache_at(r);
 
 					for (u32 k = 1; k < width; ++k)
 					{
-						const f32 cost = args.c_traversal * area + cache[l].decisions[k].cost + cache[r].decisions[width - k].cost;
-						if (cost < c.decisions[1].cost)
+						const f32 cost = args.c_traversal * area + cd_l[k].cost + cd_r[width - k].cost;
+						if (cost < cd_n[1].cost)
 						{
-							c.decisions[1].dist_left = static_cast<u8>(k);
-							c.decisions[1].dist_right = static_cast<u8>(width - k);
-							c.decisions[1].cost = cost;
-							c.decisions[1].type = d_internal;
+							cd_n[1].dist_left = static_cast<u8>(k);
+							cd_n[1].dist_right = static_cast<u8>(width - k);
+							cd_n[1].cost = cost;
+							cd_n[1].type = d_internal;
 						}
 					}
 
 					for (u32 j = 2; j < width; ++j)
 					{
-						c.decisions[j] = c.decisions[j - 1];
+						cd_n[j] = cd_n[j - 1];
 						for (u32 k = 1; k < j; ++k)
 						{
-							const f32 cost = cache[l].decisions[k].cost
-								+ cache[r].decisions[j - k].cost;
-							if (cost < c.decisions[j].cost)
+							const f32 cost = cd_l[k].cost
+								+ cd_r[j - k].cost;
+							if (cost < cd_n[j].cost)
 							{
-								c.decisions[j].dist_left = static_cast<u8>(k);
-								c.decisions[j].dist_right = static_cast<u8>(j - k);
-								c.decisions[j].cost = cost;
-								c.decisions[j].type = d_distribute;
+								cd_n[j].dist_left = static_cast<u8>(k);
+								cd_n[j].dist_right = static_cast<u8>(j - k);
+								cd_n[j].cost = cost;
+								cd_n[j].type = d_distribute;
 							}
 						}
 					}
 				}
 				else
 				{
-					for (u32 j = 2; j < width; ++j) c.decisions[j] = c.decisions[j - 1];
+					for (u32 j = 2; j < width; ++j) cd_n[j] = cd_n[j - 1];
 				}
 
-				CHECK_MSG(c.decisions[1].cost != INFINITY, "collapse: node %d has no valid arrangement at width %u " "(max_leaf_size %u, %u prims)", n, width, args.max_leaf_size, c.prim_cnt);
+				CHECK_MSG(cd_n[1].cost != INFINITY, "collapse: node %d has no valid arrangement at width %u " "(max_leaf_size %u, %u prims)", n, width, args.max_leaf_size, c.prim_cnt);
 			}
 
 			// emit
@@ -210,7 +229,7 @@ namespace bvh
 				bvh2_node& out = dst[e.dst_index];
 				out = node;
 
-				const decision d = cache[e.it.node].decisions[e.it.slot];
+				const decision d = cache_at(e.it.node)[e.it.slot];
 
 				if (d.type == d_internal)
 				{
@@ -223,7 +242,7 @@ namespace bvh
 					for (u32 i = 0; i < node_set.size();)
 					{
 						const item     cur = node_set[i];
-						const decision cd = cache[cur.node].decisions[cur.slot];
+						const decision cd = cache_at(cur.node)[cur.slot];
 
 						if (cd.type == d_distribute)
 						{
@@ -249,8 +268,8 @@ namespace bvh
 				else if (d.type == d_leaf)
 				{
 					out.ptr.is_int = 0;
-					out.ptr.prim_cnt = cache[e.it.node].prim_cnt;
-					out.ptr.prim_idx = cache[e.it.node].prim_idx;
+					out.ptr.prim_cnt = prims[e.it.node].prim_cnt;
+					out.ptr.prim_idx = prims[e.it.node].prim_idx;
 				}
 				else
 				{
@@ -271,17 +290,25 @@ namespace bvh
 		timer t;
 
 		const std::vector<bvh2_node>& src = tree.nodes();
-		std::vector<bvh2_node> dst = (args.method == collapse_method::greedy) ? collapse_greedy(src, args.width) : collapse_dp(src, tree, m, args);
+		const size_t src_node_count = src.size();
+		u64 scratch_bytes = 0;
+		std::vector<bvh2_node> dst = (args.method == collapse_method::greedy)
+			? collapse_greedy(src, args.width)
+			: collapse_dp(src, tree, m, args, scratch_bytes);
 
 		tree.replace_nodes(std::move(dst), args.width);
 
 		collapse_report r;
 		r.collapse_ms = t.elapsed_ms();
 		r.width = args.width;
+		r.scratch_bytes = scratch_bytes;
+		r.legacy_scratch_bytes = u64(src_node_count) * legacy_dp_bytes_per_node;
 
 		const std::vector<bvh2_node>& out = tree.nodes();
 		r.node_count = static_cast<u32>(out.size());
 		r.max_depth = tree.report().max_depth;
+		r.required_stack = required_stack_depth(args.width, r.max_depth);
+		r.stack_bound_ok = r.required_stack <= bvh2_stack_size;
 
 		u64 total_children = 0;
 		for (const bvh2_node& node : out)

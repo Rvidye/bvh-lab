@@ -159,6 +159,7 @@
     <ClInclude Include="util\image.h" />
     <ClInclude Include="util\log.h" />
     <ClInclude Include="util\mesh.h" />
+    <ClInclude Include="util\memory.h" />
     <ClInclude Include="util\metrics.h" />
     <ClInclude Include="util\parallel.h" />
     <ClInclude Include="util\stats.h" />
@@ -177,6 +178,7 @@
     <ClCompile Include="util\check.cpp" />
     <ClCompile Include="util\image.cpp" />
     <ClCompile Include="util\log.cpp" />
+    <ClCompile Include="util\memory.cpp" />
     <ClCompile Include="util\metrics.cpp" />
     <ClCompile Include="util\mesh.cpp" />
     <ClCompile Include="util\stats.cpp" />
