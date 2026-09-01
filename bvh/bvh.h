@@ -38,6 +38,9 @@ namespace bvh
 	struct quality_metrics;
 	struct quality_args;
 	struct trace_result;
+	struct directional_geometry;
+	struct directional_ratio;
+	struct unit_direction;
 
 } // namespace bvh
 

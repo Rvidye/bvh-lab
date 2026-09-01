@@ -50,6 +50,7 @@
   <ItemGroup>
     <ClCompile Include="bvh2_test.cpp" />
     <ClCompile Include="collapse_test.cpp" />
+    <ClCompile Include="directional_geometry_test.cpp" />
     <ClCompile Include="overlap_test.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="mode_test.cpp" />
