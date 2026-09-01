@@ -40,7 +40,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="direction_d.cpp" />
     <ClCompile Include="main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="direction_d.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\bvh\bvh.vcxproj">

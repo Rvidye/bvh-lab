@@ -1,0 +1,4 @@
+# Direction D artifacts are hashed in experiments/direction_d/RESULTS-D1.md.
+# Store them byte-exactly so those SHA-256 values survive any checkout.
+*.csv -text
+*.gz  -text binary

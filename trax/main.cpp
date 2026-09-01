@@ -15,6 +15,8 @@
 #include <util/stats.h>
 #include <util/timer.h>
 
+#include "direction_d.h"
+
 #include <chrono>
 #include <ctime>
 #include <cstdio>
@@ -200,6 +202,10 @@ namespace
 			"  --wide_csv=<path>      wide topology rows  (default results/<run_id>/m3_wide.csv)\n"
 			"  --depth_csv=<path>     overlap profile     (default results/<run_id>/m3_depth_profile.csv)\n"
 			"  --threads=<n>          0 = hardware        (default 0)\n"
+			"  --direction_d          also run the Direction D mechanism pass\n"
+			"  --direction_d_only     run ONLY Direction D, nothing else\n"
+			"  --git_commit=<sha>     recorded verbatim into every Direction D row\n"
+			"  --dirty=<0|1>          recorded verbatim into every Direction D row\n"
 			"  --verbose              verbose logging\n"
 			"  --help\n");
 	}
@@ -255,6 +261,7 @@ int main(int argc, char** argv)
 	const std::string wide_csv = opts.get("wide_csv", (run_dir + "/m3_wide.csv").c_str());
 	const bool run_wide = opts.has("wide");
 	const std::string depth_csv = opts.get("depth_csv", (run_dir + "/m3_depth_profile.csv").c_str());
+	const bool run_direction_d_only = opts.has("direction_d_only");
 
 	mesh original;
 	if (!original.load_obj(scene_path, scale))
@@ -275,6 +282,38 @@ int main(int argc, char** argv)
 	// A bare file name cannot say which run a profile belongs to; record the
 	// path this run actually wrote.
 	const std::string depth_csv_ref = std::filesystem::path(depth_csv).generic_string();
+
+	// Direction D is an opt-in mechanism experiment. It never runs as part of an
+	// ordinary M1/M3 invocation, and --direction_d_only runs nothing else.
+	bool direction_d_ok = true;
+	if (run_direction_d_only || opts.has("direction_d"))
+	{
+		direction_d_args dda;
+		dda.run_id = run_id;
+		dda.run_dir = run_dir;
+		dda.scene_path = scene_path;
+		dda.scene_name = scene_name;
+		dda.git_commit = opts.get("git_commit", "");
+		dda.dirty = opts.get_u32("dirty", 0u) != 0u;
+		dda.width = width;
+		dda.height = height;
+		dda.bins = bins;
+		dda.incoherent_count = incoherent_count;
+		dda.threads = 1u; // frozen for the first experiment
+		dda.validate = validate;
+
+		direction_d_ok = run_direction_d(original, dda);
+
+		if (run_direction_d_only)
+		{
+			report_thread_stats();
+			print_stats(stdout);
+			if (!direction_d_ok) LOG_ERROR("Direction D failed");
+			else                 LOG_INFO("Direction D complete");
+			log_shutdown();
+			return direction_d_ok ? 0 : 1;
+		}
+	}
 
 	// baseline: brute force
 	{
@@ -329,7 +368,7 @@ int main(int argc, char** argv)
 		split_method::sweep_sah,
 	};
 
-	bool all_valid = true;
+	bool all_valid = direction_d_ok;
 
 	for (split_method method : methods)
 	{
