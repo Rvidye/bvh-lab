@@ -57,10 +57,34 @@ namespace bvh
 		// these two is the whole of Gate B.
 		directional_mean_fill,
 		directional_min_fill,
+		// E2/E3. Gate B moved the saturating map and the aggregation together, so
+		// its verdict was not attributable to either. These fill in the grid:
+		// mean_fill is (clamp, area-weighted mean) and min_fill is
+		// (exponential, unweighted min), so fill_mean_exp and fill_min_clamp
+		// complete the 2x2, and the a0/a05/a2 row sweeps the weight exponent with
+		// the map and aggregation held fixed.
+		fill_mean_clamp_a0,    // unweighted mean of clamped fills
+		fill_mean_clamp_a05,
+		fill_mean_clamp_a2,
+		fill_mean_exp,         // area-weighted mean, exponential map
+		fill_min_clamp,        // unweighted min, clamp map
 		count
 	};
 
 	constexpr u32 score_count = static_cast<u32>(score_id::count);
+
+	// E4: where in the tree the descriptor earns its keep, indexed by the depth
+	// of the parent whose children were compared. Deeper than the last bucket
+	// accumulates into it. These are pooled totals, not per-ray clusters, so they
+	// support point estimates only -- no clustered interval can be formed here.
+	constexpr u32 depth_bucket_count = 64;
+
+	struct depth_accumulator
+	{
+		u64 pairs[depth_bucket_count]{};
+		u64 correct[depth_bucket_count][score_count]{};
+		u64 ties[depth_bucket_count][score_count]{};
+	};
 
 	const char* to_string(score_id s);
 
@@ -149,7 +173,8 @@ namespace bvh
 		u32 trace_max_stack{ 0 };
 		u64 trace_hits{ 0 };
 
-		bin_accumulator bins{};
+		bin_accumulator   bins{};
+		depth_accumulator depths{};
 	};
 
 	struct directional_analysis_args

@@ -7,6 +7,9 @@ gateb_2026_09_02,hairball.obj,diffuse_1,directional_min_fill,box_projected_ratio
 gateb_2026_09_02,hairball.obj,diffuse_1,directional_mean_fill,box_projected_ratio,0.583795,0.510780,0.073015,0.063249,0.083334,yes,1000,0xD1A70000D1A70000,ray,4518,paired
 gateb_2026_09_02,hairball.obj,diffuse_1,directional_mean_fill,directional,0.583795,0.582929,0.000866,-0.004303,0.006161,inconclusive,1000,0xD1A70000D1A70000,ray,4518,paired
 gateb_2026_09_02,hairball.obj,diffuse_1,directional_min_fill,directional,0.566922,0.582929,-0.016007,-0.020793,-0.011107,no,1000,0xD1A70000D1A70000,ray,4518,paired
+gateb_2026_09_02,hairball.obj,diffuse_1,directional_mean_fill,surface_density,0.583795,0.575555,0.008239,0.003590,0.013153,yes,1000,0xD1A70000D1A70000,ray,4518,paired
+gateb_2026_09_02,hairball.obj,diffuse_1,directional_mean_fill,primitive_count,0.583795,0.563615,0.020180,0.012751,0.027279,yes,1000,0xD1A70000D1A70000,ray,4518,paired
+gateb_2026_09_02,hairball.obj,diffuse_1,directional_min_fill,surface_density,0.566922,0.575555,-0.008634,-0.013235,-0.003679,no,1000,0xD1A70000D1A70000,ray,4518,paired
 gateb_2026_09_02,hairball.obj,incoherent,directional,box_projected_ratio,0.583520,0.519207,0.064313,0.063315,0.065267,yes,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,hairball.obj,incoherent,directional,surface_density,0.583520,0.575766,0.007754,0.007368,0.008080,yes,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,hairball.obj,incoherent,directional,primitive_count,0.583520,0.575432,0.008088,0.007470,0.008727,yes,1000,0xD1A70000D1A70000,ray,524288,paired
@@ -15,6 +18,9 @@ gateb_2026_09_02,hairball.obj,incoherent,directional_min_fill,box_projected_rati
 gateb_2026_09_02,hairball.obj,incoherent,directional_mean_fill,box_projected_ratio,0.587136,0.519207,0.067929,0.066992,0.068927,yes,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,hairball.obj,incoherent,directional_mean_fill,directional,0.587136,0.583520,0.003616,0.003039,0.004187,yes,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,hairball.obj,incoherent,directional_min_fill,directional,0.568207,0.583520,-0.015313,-0.015792,-0.014847,no,1000,0xD1A70000D1A70000,ray,524288,paired
+gateb_2026_09_02,hairball.obj,incoherent,directional_mean_fill,surface_density,0.587136,0.575766,0.011369,0.010820,0.011904,yes,1000,0xD1A70000D1A70000,ray,524288,paired
+gateb_2026_09_02,hairball.obj,incoherent,directional_mean_fill,primitive_count,0.587136,0.575432,0.011703,0.010915,0.012455,yes,1000,0xD1A70000D1A70000,ray,524288,paired
+gateb_2026_09_02,hairball.obj,incoherent,directional_min_fill,surface_density,0.568207,0.575766,-0.007560,-0.008019,-0.007081,no,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,hairball.obj,primary,directional,box_projected_ratio,0.585260,0.516230,0.069030,0.060081,0.078329,yes,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,hairball.obj,primary,directional,surface_density,0.585260,0.577087,0.008173,0.005272,0.011415,yes,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,hairball.obj,primary,directional,primitive_count,0.585260,0.574171,0.011089,0.004844,0.017738,yes,1000,0xD1A70000D1A70000,ray,16384,paired
@@ -23,6 +29,9 @@ gateb_2026_09_02,hairball.obj,primary,directional_min_fill,box_projected_ratio,0
 gateb_2026_09_02,hairball.obj,primary,directional_mean_fill,box_projected_ratio,0.594731,0.516230,0.078501,0.069550,0.087516,yes,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,hairball.obj,primary,directional_mean_fill,directional,0.594731,0.585260,0.009471,0.004678,0.014620,yes,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,hairball.obj,primary,directional_min_fill,directional,0.567232,0.585260,-0.018028,-0.022009,-0.013586,no,1000,0xD1A70000D1A70000,ray,16384,paired
+gateb_2026_09_02,hairball.obj,primary,directional_mean_fill,surface_density,0.594731,0.577087,0.017645,0.013041,0.022710,yes,1000,0xD1A70000D1A70000,ray,16384,paired
+gateb_2026_09_02,hairball.obj,primary,directional_mean_fill,primitive_count,0.594731,0.574171,0.020560,0.012452,0.028129,yes,1000,0xD1A70000D1A70000,ray,16384,paired
+gateb_2026_09_02,hairball.obj,primary,directional_min_fill,surface_density,0.567232,0.577087,-0.009855,-0.014468,-0.005472,no,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,hairball.obj,shadow_ao,directional,box_projected_ratio,0.585915,0.513551,0.072364,0.062844,0.082231,yes,1000,0xD1A70000D1A70000,ray,4518,paired
 gateb_2026_09_02,hairball.obj,shadow_ao,directional,surface_density,0.585915,0.580689,0.005227,0.001263,0.009268,yes,1000,0xD1A70000D1A70000,ray,4518,paired
 gateb_2026_09_02,hairball.obj,shadow_ao,directional,primitive_count,0.585915,0.567247,0.018669,0.012352,0.025828,yes,1000,0xD1A70000D1A70000,ray,4518,paired
@@ -31,6 +40,9 @@ gateb_2026_09_02,hairball.obj,shadow_ao,directional_min_fill,box_projected_ratio
 gateb_2026_09_02,hairball.obj,shadow_ao,directional_mean_fill,box_projected_ratio,0.585743,0.513551,0.072192,0.062475,0.082594,yes,1000,0xD1A70000D1A70000,ray,4518,paired
 gateb_2026_09_02,hairball.obj,shadow_ao,directional_mean_fill,directional,0.585743,0.585915,-0.000172,-0.005711,0.005284,inconclusive,1000,0xD1A70000D1A70000,ray,4518,paired
 gateb_2026_09_02,hairball.obj,shadow_ao,directional_min_fill,directional,0.570990,0.585915,-0.014925,-0.019909,-0.009937,no,1000,0xD1A70000D1A70000,ray,4518,paired
+gateb_2026_09_02,hairball.obj,shadow_ao,directional_mean_fill,surface_density,0.585743,0.580689,0.005055,-0.000124,0.010176,inconclusive,1000,0xD1A70000D1A70000,ray,4518,paired
+gateb_2026_09_02,hairball.obj,shadow_ao,directional_mean_fill,primitive_count,0.585743,0.567247,0.018497,0.010221,0.026546,yes,1000,0xD1A70000D1A70000,ray,4518,paired
+gateb_2026_09_02,hairball.obj,shadow_ao,directional_min_fill,surface_density,0.570990,0.580689,-0.009699,-0.014558,-0.004717,no,1000,0xD1A70000D1A70000,ray,4518,paired
 gateb_2026_09_02,intel-sponza.obj,diffuse_1,directional,box_projected_ratio,0.554432,0.461278,0.093154,0.065137,0.120208,yes,1000,0xD1A70000D1A70000,ray,9142,paired
 gateb_2026_09_02,intel-sponza.obj,diffuse_1,directional,surface_density,0.554432,0.540645,0.013787,-0.004644,0.031890,inconclusive,1000,0xD1A70000D1A70000,ray,9142,paired
 gateb_2026_09_02,intel-sponza.obj,diffuse_1,directional,primitive_count,0.554432,0.536712,0.017719,-0.013368,0.045262,inconclusive,1000,0xD1A70000D1A70000,ray,9142,paired
@@ -39,6 +51,9 @@ gateb_2026_09_02,intel-sponza.obj,diffuse_1,directional_min_fill,box_projected_r
 gateb_2026_09_02,intel-sponza.obj,diffuse_1,directional_mean_fill,box_projected_ratio,0.554701,0.461278,0.093424,0.064395,0.123305,yes,1000,0xD1A70000D1A70000,ray,9142,paired
 gateb_2026_09_02,intel-sponza.obj,diffuse_1,directional_mean_fill,directional,0.554701,0.554432,0.000270,-0.018632,0.020944,inconclusive,1000,0xD1A70000D1A70000,ray,9142,paired
 gateb_2026_09_02,intel-sponza.obj,diffuse_1,directional_min_fill,directional,0.537101,0.554432,-0.017331,-0.039857,0.008222,inconclusive,1000,0xD1A70000D1A70000,ray,9142,paired
+gateb_2026_09_02,intel-sponza.obj,diffuse_1,directional_mean_fill,surface_density,0.554701,0.540645,0.014057,-0.005900,0.032665,inconclusive,1000,0xD1A70000D1A70000,ray,9142,paired
+gateb_2026_09_02,intel-sponza.obj,diffuse_1,directional_mean_fill,primitive_count,0.554701,0.536712,0.017989,-0.012696,0.050360,inconclusive,1000,0xD1A70000D1A70000,ray,9142,paired
+gateb_2026_09_02,intel-sponza.obj,diffuse_1,directional_min_fill,surface_density,0.537101,0.540645,-0.003544,-0.030257,0.022490,inconclusive,1000,0xD1A70000D1A70000,ray,9142,paired
 gateb_2026_09_02,intel-sponza.obj,incoherent,directional,box_projected_ratio,0.587463,0.490006,0.097457,0.096543,0.098467,yes,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,intel-sponza.obj,incoherent,directional,surface_density,0.587463,0.594666,-0.007203,-0.007769,-0.006592,no,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,intel-sponza.obj,incoherent,directional,primitive_count,0.587463,0.529529,0.057934,0.056899,0.059026,yes,1000,0xD1A70000D1A70000,ray,524288,paired
@@ -47,6 +62,9 @@ gateb_2026_09_02,intel-sponza.obj,incoherent,directional_min_fill,box_projected_
 gateb_2026_09_02,intel-sponza.obj,incoherent,directional_mean_fill,box_projected_ratio,0.603842,0.490006,0.113836,0.112795,0.114900,yes,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,intel-sponza.obj,incoherent,directional_mean_fill,directional,0.603842,0.587463,0.016379,0.015709,0.017020,yes,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,intel-sponza.obj,incoherent,directional_min_fill,directional,0.557816,0.587463,-0.029647,-0.030473,-0.028799,no,1000,0xD1A70000D1A70000,ray,524288,paired
+gateb_2026_09_02,intel-sponza.obj,incoherent,directional_mean_fill,surface_density,0.603842,0.594666,0.009176,0.008436,0.009897,yes,1000,0xD1A70000D1A70000,ray,524288,paired
+gateb_2026_09_02,intel-sponza.obj,incoherent,directional_mean_fill,primitive_count,0.603842,0.529529,0.074313,0.073148,0.075486,yes,1000,0xD1A70000D1A70000,ray,524288,paired
+gateb_2026_09_02,intel-sponza.obj,incoherent,directional_min_fill,surface_density,0.557816,0.594666,-0.036850,-0.037721,-0.035987,no,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,intel-sponza.obj,primary,directional,box_projected_ratio,0.592508,0.598748,-0.006240,-0.016980,0.004562,inconclusive,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,intel-sponza.obj,primary,directional,surface_density,0.592508,0.638079,-0.045572,-0.053285,-0.037211,no,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,intel-sponza.obj,primary,directional,primitive_count,0.592508,0.485782,0.106725,0.093954,0.119800,yes,1000,0xD1A70000D1A70000,ray,16384,paired
@@ -55,6 +73,9 @@ gateb_2026_09_02,intel-sponza.obj,primary,directional_min_fill,box_projected_rat
 gateb_2026_09_02,intel-sponza.obj,primary,directional_mean_fill,box_projected_ratio,0.577379,0.598748,-0.021369,-0.032891,-0.008722,no,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,intel-sponza.obj,primary,directional_mean_fill,directional,0.577379,0.592508,-0.015128,-0.022987,-0.007133,no,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,intel-sponza.obj,primary,directional_min_fill,directional,0.510502,0.592508,-0.082006,-0.091294,-0.072696,no,1000,0xD1A70000D1A70000,ray,16384,paired
+gateb_2026_09_02,intel-sponza.obj,primary,directional_mean_fill,surface_density,0.577379,0.638079,-0.060700,-0.069259,-0.051516,no,1000,0xD1A70000D1A70000,ray,16384,paired
+gateb_2026_09_02,intel-sponza.obj,primary,directional_mean_fill,primitive_count,0.577379,0.485782,0.091597,0.078400,0.105452,yes,1000,0xD1A70000D1A70000,ray,16384,paired
+gateb_2026_09_02,intel-sponza.obj,primary,directional_min_fill,surface_density,0.510502,0.638079,-0.127578,-0.137057,-0.116846,no,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,intel-sponza.obj,shadow_ao,directional,box_projected_ratio,0.539818,0.461943,0.077875,0.073164,0.082126,yes,1000,0xD1A70000D1A70000,ray,585026,paired
 gateb_2026_09_02,intel-sponza.obj,shadow_ao,directional,surface_density,0.539818,0.536983,0.002835,-0.000221,0.006058,inconclusive,1000,0xD1A70000D1A70000,ray,585026,paired
 gateb_2026_09_02,intel-sponza.obj,shadow_ao,directional,primitive_count,0.539818,0.531485,0.008333,0.003535,0.012921,yes,1000,0xD1A70000D1A70000,ray,585026,paired
@@ -63,6 +84,9 @@ gateb_2026_09_02,intel-sponza.obj,shadow_ao,directional_min_fill,box_projected_r
 gateb_2026_09_02,intel-sponza.obj,shadow_ao,directional_mean_fill,box_projected_ratio,0.585341,0.461943,0.123399,0.118345,0.128320,yes,1000,0xD1A70000D1A70000,ray,585026,paired
 gateb_2026_09_02,intel-sponza.obj,shadow_ao,directional_mean_fill,directional,0.585341,0.539818,0.045523,0.042431,0.048679,yes,1000,0xD1A70000D1A70000,ray,585026,paired
 gateb_2026_09_02,intel-sponza.obj,shadow_ao,directional_min_fill,directional,0.522560,0.539818,-0.017258,-0.020922,-0.013811,no,1000,0xD1A70000D1A70000,ray,585026,paired
+gateb_2026_09_02,intel-sponza.obj,shadow_ao,directional_mean_fill,surface_density,0.585341,0.536983,0.048358,0.045593,0.051158,yes,1000,0xD1A70000D1A70000,ray,585026,paired
+gateb_2026_09_02,intel-sponza.obj,shadow_ao,directional_mean_fill,primitive_count,0.585341,0.531485,0.053856,0.049549,0.058247,yes,1000,0xD1A70000D1A70000,ray,585026,paired
+gateb_2026_09_02,intel-sponza.obj,shadow_ao,directional_min_fill,surface_density,0.522560,0.536983,-0.014423,-0.018311,-0.010336,no,1000,0xD1A70000D1A70000,ray,585026,paired
 gateb_2026_09_02,san-miguel.obj,diffuse_1,directional,box_projected_ratio,0.586093,0.514511,0.071583,0.068219,0.075142,yes,1000,0xD1A70000D1A70000,ray,255358,paired
 gateb_2026_09_02,san-miguel.obj,diffuse_1,directional,surface_density,0.586093,0.589066,-0.002972,-0.004832,-0.001148,no,1000,0xD1A70000D1A70000,ray,255358,paired
 gateb_2026_09_02,san-miguel.obj,diffuse_1,directional,primitive_count,0.586093,0.475453,0.110641,0.105917,0.115000,yes,1000,0xD1A70000D1A70000,ray,255358,paired
@@ -71,6 +95,9 @@ gateb_2026_09_02,san-miguel.obj,diffuse_1,directional_min_fill,box_projected_rat
 gateb_2026_09_02,san-miguel.obj,diffuse_1,directional_mean_fill,box_projected_ratio,0.600463,0.514511,0.085953,0.081824,0.089916,yes,1000,0xD1A70000D1A70000,ray,255358,paired
 gateb_2026_09_02,san-miguel.obj,diffuse_1,directional_mean_fill,directional,0.600463,0.586093,0.014370,0.011485,0.017177,yes,1000,0xD1A70000D1A70000,ray,255358,paired
 gateb_2026_09_02,san-miguel.obj,diffuse_1,directional_min_fill,directional,0.536816,0.586093,-0.049278,-0.052399,-0.046304,no,1000,0xD1A70000D1A70000,ray,255358,paired
+gateb_2026_09_02,san-miguel.obj,diffuse_1,directional_mean_fill,surface_density,0.600463,0.589066,0.011398,0.008448,0.014173,yes,1000,0xD1A70000D1A70000,ray,255358,paired
+gateb_2026_09_02,san-miguel.obj,diffuse_1,directional_mean_fill,primitive_count,0.600463,0.475453,0.125011,0.120281,0.129852,yes,1000,0xD1A70000D1A70000,ray,255358,paired
+gateb_2026_09_02,san-miguel.obj,diffuse_1,directional_min_fill,surface_density,0.536816,0.589066,-0.052250,-0.054953,-0.049654,no,1000,0xD1A70000D1A70000,ray,255358,paired
 gateb_2026_09_02,san-miguel.obj,incoherent,directional,box_projected_ratio,0.583821,0.490863,0.092957,0.091860,0.094024,yes,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,san-miguel.obj,incoherent,directional,surface_density,0.583821,0.575957,0.007864,0.007373,0.008319,yes,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,san-miguel.obj,incoherent,directional,primitive_count,0.583821,0.476656,0.107165,0.106037,0.108366,yes,1000,0xD1A70000D1A70000,ray,524288,paired
@@ -79,6 +106,9 @@ gateb_2026_09_02,san-miguel.obj,incoherent,directional_min_fill,box_projected_ra
 gateb_2026_09_02,san-miguel.obj,incoherent,directional_mean_fill,box_projected_ratio,0.624799,0.490863,0.133935,0.132756,0.135334,yes,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,san-miguel.obj,incoherent,directional_mean_fill,directional,0.624799,0.583821,0.040978,0.040157,0.041869,yes,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,san-miguel.obj,incoherent,directional_min_fill,directional,0.517482,0.583821,-0.066339,-0.067243,-0.065394,no,1000,0xD1A70000D1A70000,ray,524288,paired
+gateb_2026_09_02,san-miguel.obj,incoherent,directional_mean_fill,surface_density,0.624799,0.575957,0.048842,0.048007,0.049766,yes,1000,0xD1A70000D1A70000,ray,524288,paired
+gateb_2026_09_02,san-miguel.obj,incoherent,directional_mean_fill,primitive_count,0.624799,0.476656,0.148143,0.146871,0.149552,yes,1000,0xD1A70000D1A70000,ray,524288,paired
+gateb_2026_09_02,san-miguel.obj,incoherent,directional_min_fill,surface_density,0.517482,0.575957,-0.058474,-0.059458,-0.057540,no,1000,0xD1A70000D1A70000,ray,524288,paired
 gateb_2026_09_02,san-miguel.obj,primary,directional,box_projected_ratio,0.596548,0.557268,0.039280,0.024778,0.052869,yes,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,san-miguel.obj,primary,directional,surface_density,0.596548,0.593611,0.002937,-0.001169,0.006911,inconclusive,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,san-miguel.obj,primary,directional,primitive_count,0.596548,0.400087,0.196462,0.178936,0.213337,yes,1000,0xD1A70000D1A70000,ray,16384,paired
@@ -87,6 +117,9 @@ gateb_2026_09_02,san-miguel.obj,primary,directional_min_fill,box_projected_ratio
 gateb_2026_09_02,san-miguel.obj,primary,directional_mean_fill,box_projected_ratio,0.641458,0.557268,0.084190,0.063145,0.106555,yes,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,san-miguel.obj,primary,directional_mean_fill,directional,0.641458,0.596548,0.044910,0.033012,0.058663,yes,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,san-miguel.obj,primary,directional_min_fill,directional,0.529527,0.596548,-0.067021,-0.079967,-0.053266,no,1000,0xD1A70000D1A70000,ray,16384,paired
+gateb_2026_09_02,san-miguel.obj,primary,directional_mean_fill,surface_density,0.641458,0.593611,0.047847,0.034751,0.060995,yes,1000,0xD1A70000D1A70000,ray,16384,paired
+gateb_2026_09_02,san-miguel.obj,primary,directional_mean_fill,primitive_count,0.641458,0.400087,0.241371,0.221634,0.261548,yes,1000,0xD1A70000D1A70000,ray,16384,paired
+gateb_2026_09_02,san-miguel.obj,primary,directional_min_fill,surface_density,0.529527,0.593611,-0.064084,-0.078168,-0.051006,no,1000,0xD1A70000D1A70000,ray,16384,paired
 gateb_2026_09_02,san-miguel.obj,shadow_ao,directional,box_projected_ratio,0.580947,0.423242,0.157704,0.152953,0.162691,yes,1000,0xD1A70000D1A70000,ray,255358,paired
 gateb_2026_09_02,san-miguel.obj,shadow_ao,directional,surface_density,0.580947,0.561213,0.019734,0.017401,0.022074,yes,1000,0xD1A70000D1A70000,ray,255358,paired
 gateb_2026_09_02,san-miguel.obj,shadow_ao,directional,primitive_count,0.580947,0.478020,0.102927,0.096966,0.109203,yes,1000,0xD1A70000D1A70000,ray,255358,paired
@@ -95,3 +128,6 @@ gateb_2026_09_02,san-miguel.obj,shadow_ao,directional_min_fill,box_projected_rat
 gateb_2026_09_02,san-miguel.obj,shadow_ao,directional_mean_fill,box_projected_ratio,0.626080,0.423242,0.202837,0.196618,0.209403,yes,1000,0xD1A70000D1A70000,ray,255358,paired
 gateb_2026_09_02,san-miguel.obj,shadow_ao,directional_mean_fill,directional,0.626080,0.580947,0.045133,0.040844,0.049451,yes,1000,0xD1A70000D1A70000,ray,255358,paired
 gateb_2026_09_02,san-miguel.obj,shadow_ao,directional_min_fill,directional,0.529027,0.580947,-0.051920,-0.056171,-0.047818,no,1000,0xD1A70000D1A70000,ray,255358,paired
+gateb_2026_09_02,san-miguel.obj,shadow_ao,directional_mean_fill,surface_density,0.626080,0.561213,0.064866,0.060522,0.069036,yes,1000,0xD1A70000D1A70000,ray,255358,paired
+gateb_2026_09_02,san-miguel.obj,shadow_ao,directional_mean_fill,primitive_count,0.626080,0.478020,0.148060,0.141697,0.154931,yes,1000,0xD1A70000D1A70000,ray,255358,paired
+gateb_2026_09_02,san-miguel.obj,shadow_ao,directional_min_fill,surface_density,0.529027,0.561213,-0.032186,-0.036107,-0.028392,no,1000,0xD1A70000D1A70000,ray,255358,paired

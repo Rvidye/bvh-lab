@@ -161,6 +161,129 @@ namespace
 
 	double pct(double v, double base) { return base > 0.0 ? 100.0 * (v - base) / base : 0.0; }
 
+	// Nodes are stored parent before child, so one forward pass suffices.
+	std::vector<u32> node_depths(const bvh2& tree)
+	{
+		const std::vector<bvh2_node>& nodes = tree.nodes();
+		std::vector<u32> depth(nodes.size(), 0u);
+		for (size_t i = 0; i < nodes.size(); ++i)
+		{
+			if (!nodes[i].ptr.is_int) continue;
+			for (u32 c = 0; c < nodes[i].ptr.child_cnt; ++c)
+				depth[nodes[i].ptr.child_idx + c] = depth[i] + 1u;
+		}
+		return depth;
+	}
+
+	// San Miguel changes decisions at hundreds of thousands of nodes across eight
+	// variants, so the per-decision dump is strided to keep the file bounded. The
+	// depth-banded aggregate written next to it is exact: it is accumulated over
+	// EVERY changed decision, not over this sample.
+	constexpr u64 decision_sample_cap = 20000ull;
+
+	// Same bands as the E4 depth breakdown, so the two analyses line up.
+	constexpr u32 depth_band_edges[] = { 0u, 4u, 8u, 12u, 16u, 24u, 32u };
+	constexpr u32 depth_band_count = u32(sizeof(depth_band_edges) / sizeof(depth_band_edges[0]));
+
+	u32 depth_band_of(u32 depth)
+	{
+		u32 b = 0;
+		for (u32 i = 0; i < depth_band_count; ++i)
+			if (depth >= depth_band_edges[i]) b = i;
+		return b;
+	}
+
+	const char* depth_band_label(u32 b)
+	{
+		static const char* names[depth_band_count] =
+		{ "0-3", "4-7", "8-11", "12-15", "16-23", "24-31", "32+" };
+		return names[b < depth_band_count ? b : depth_band_count - 1];
+	}
+
+	// Per-binary-node visit counts under the ordinary binary traversal.
+	//
+	// This is an ANALYSIS measure only. It is computed after every tree already
+	// exists and never feeds a build, so it does not put rays into the build path.
+	// It exists because a raw decision-change rate is uninterpretable on its own:
+	// a decision changed at a node no ray ever reaches cannot alter traversal
+	// work, so "4.5% of decisions changed" and "0.3% fewer node steps" may be the
+	// same fact rather than two.
+	//
+	// A literal mirror of intersect() in core/traverse_bvh2.h with node ids
+	// carried in the stack entries. A node counts as visited when its entry is
+	// popped and not pruned, which is exactly when the production traversal does
+	// work there.
+	void accumulate_node_visits(const bvh2& tree, const mesh& m, const rayset& rs,
+		std::vector<u64>& visits)
+	{
+		const bvh2_view bvh = tree.view();
+		const auto      prims = make_prims(m, tree);
+
+		if (visits.size() != tree.nodes().size()) visits.assign(tree.nodes().size(), 0ull);
+		if (bvh.node_count == 0) return;
+
+		struct visit_entry
+		{
+			f32     t;
+			bvh_ptr ptr;
+			u32     node_id;
+		};
+
+		std::vector<visit_entry> stack(bvh2_stack_size);
+
+		for (u32 ri = 0; ri < rs.size(); ++ri)
+		{
+			const ray r = rs.get(ri);
+			hit h; h.t = r.t_max;
+
+			const vec3 inv_d = rcp(r.d);
+
+			u32 stack_size = 1u;
+			stack[0].t = r.t_min;
+			stack[0].ptr.is_int = 1;
+			stack[0].ptr.child_cnt = 1;
+			stack[0].ptr.child_idx = 0;
+			stack[0].node_id = invalid_id;   // pseudo-root: not a real node
+
+			do
+			{
+				const visit_entry e = stack[--stack_size];
+				if (e.t >= h.t) continue;                       // pruned pop
+				if (e.node_id != invalid_id) ++visits[e.node_id];
+
+				if (e.ptr.is_int)
+				{
+					const u32 max_insert_depth = stack_size;
+					for (u32 i = 0; i < e.ptr.child_cnt; ++i)
+					{
+						const u32 node_id = e.ptr.child_idx + i;
+						const f32 t = intersect<default_mode>(bvh.nodes[node_id].bounds, r, inv_d);
+						if (t < h.t)
+						{
+							u32 j = stack_size++;
+							for (; j > max_insert_depth; --j)
+							{
+								if (stack[j - 1].t > t) break;
+								stack[j] = stack[j - 1];
+							}
+							stack[j].t = t;
+							stack[j].ptr = bvh.nodes[node_id].ptr;
+							stack[j].node_id = node_id;
+						}
+					}
+				}
+				else
+				{
+					for (u32 i = 0; i < e.ptr.prim_cnt; ++i)
+					{
+						const u32 prim_id = e.ptr.prim_idx + i;
+						if (prims(prim_id, r, h)) h.id = prim_id;
+					}
+				}
+			} while (stack_size > 0);
+		}
+	}
+
 	struct variant
 	{
 		std::string       label;
@@ -172,6 +295,10 @@ namespace
 		quality_metrics   quality;
 		loss_totals       loss;
 		u64               changed{ 0 };
+		// Visit-weighted view of the same decisions: how much of the traversal
+		// work the reference tree actually performs sits at a node whose
+		// retain/absorb decision this variant moved.
+		u64               changed_visits{ 0 };
 	};
 
 } // namespace
@@ -358,6 +485,139 @@ bool run_geometry_collapse(const geometry_collapse_args& args)
 		references[v] = trace_reference(binary, m, raysets[v]);
 	}
 
+	// ---------------------------------------------- visit-weighted decisions
+	//
+	// Reference visit counts over the binary tree, pooled across the three frozen
+	// views. Analysis only: every tree above already exists and none of them can
+	// be affected by this.
+	std::vector<u64> node_visits;
+	for (u32 v = 0; v < 3; ++v)
+		accumulate_node_visits(binary, m, raysets[v], node_visits);
+
+	u64 total_visits = 0;
+	for (u64 c : node_visits) total_visits += c;
+
+	for (variant& v : variants)
+	{
+		u64 cv = 0;
+		for (size_t i = 0; i < v.emitted.size() && i < node_visits.size(); ++i)
+			if (v.emitted[i] != variants[0].emitted[i]) cv += node_visits[i];
+		v.changed_visits = cv;
+	}
+
+	LOG_INFO("  reference node visits over 3 views: %llu across %u binary nodes",
+		(unsigned long long)total_visits, binary_nodes);
+
+	// d3: one row per changed decision, deterministically strided so a scene with
+	// millions of changes still produces a bounded file.
+	{
+		const std::string d3_csv = args.run_dir + "/d3_decisions.csv";
+		const std::vector<bvh2_node>& bnodes = binary.nodes();
+		const std::vector<directional_geometry> dg = compute_directional_geometry(binary, m);
+		const std::vector<u32> bdepth = node_depths(binary);
+
+		std::ofstream out(d3_csv, std::ios::app);
+		if (!out.is_open()) { LOG_ERROR("  cannot open %s", d3_csv.c_str()); return false; }
+		if (std::filesystem::file_size(d3_csv) == 0)
+			out << "run_id,scene,variant,loss_kind,mu,node_id,depth,is_internal,"
+			"subtree_prims,sa,ldir,lscalar,visits_reference,"
+			"baseline_emitted,variant_emitted\n";
+
+		char buf[512];
+		for (const variant& v : variants)
+		{
+			if (v.label == "sah_baseline") continue;
+
+			u64 changed_seen = 0;
+			const u64 stride = v.changed > decision_sample_cap
+				? (v.changed + decision_sample_cap - 1) / decision_sample_cap : 1u;
+
+			for (size_t i = 0; i < v.emitted.size(); ++i)
+			{
+				if (v.emitted[i] == variants[0].emitted[i]) continue;
+				const u64 ordinal = changed_seen++;
+				if (ordinal % stride) continue;
+
+				const int n = snprintf(buf, sizeof(buf),
+					"%s,%s,%s,%s,%.4f,%zu,%u,%u,%u,%.6g,%.6g,%.6g,%llu,%u,%u\n",
+					args.run_id.c_str(), args.scene_name.c_str(), v.label.c_str(),
+					to_string(v.kind), v.mu, i, bdepth[i],
+					bnodes[i].ptr.is_int ? 1u : 0u, dg[i].primitive_count,
+					double(bnodes[i].bounds.surface_area()),
+					double(directional_loss(bnodes[i].bounds, dg[i])),
+					double(scalar_density_loss(bnodes[i].bounds, dg[i])),
+					(unsigned long long)(i < node_visits.size() ? node_visits[i] : 0ull),
+					u32(variants[0].emitted[i]), u32(v.emitted[i]));
+				out.write(buf, n);
+			}
+		}
+		out.flush();
+		if (!out.good()) { LOG_ERROR("  write failed for %s", d3_csv.c_str()); return false; }
+
+		// d3_summary: exact depth-banded aggregate over every changed decision.
+		// This is what ties E4 to E5 -- it says whether the decisions the loss
+		// moves sit at the depths where the descriptor predicts well, or at the
+		// shallow depths where E4 measured its sign to be inverted.
+		const std::string d3_sum_csv = args.run_dir + "/d3_summary.csv";
+
+		// Reference totals per band, so a share can be formed.
+		u64 band_nodes[depth_band_count]{};
+		u64 band_visits[depth_band_count]{};
+		for (size_t i = 0; i < bnodes.size(); ++i)
+		{
+			const u32 b = depth_band_of(bdepth[i]);
+			++band_nodes[b];
+			if (i < node_visits.size()) band_visits[b] += node_visits[i];
+		}
+
+		bool sum_ok = true;
+		for (const variant& v : variants)
+		{
+			if (v.label == "sah_baseline") continue;
+
+			u64 changed_nodes[depth_band_count]{};
+			u64 changed_visits[depth_band_count]{};
+			for (size_t i = 0; i < v.emitted.size(); ++i)
+			{
+				if (v.emitted[i] == variants[0].emitted[i]) continue;
+				const u32 b = depth_band_of(bdepth[i]);
+				++changed_nodes[b];
+				if (i < node_visits.size()) changed_visits[b] += node_visits[i];
+			}
+
+			for (u32 b = 0; b < depth_band_count; ++b)
+			{
+				if (band_nodes[b] == 0) continue;
+
+				metrics row;
+				row.set("run_id", args.run_id);
+				row.set("git_commit", args.git_commit);
+				row.set("dirty", args.dirty ? 1u : 0u);
+				row.set("scene", args.scene_name);
+				row.set("variant", v.label);
+				row.set("loss_kind", to_string(v.kind));
+				row.set("mu", v.mu, 4);
+				row.set("depth_band", depth_band_label(b));
+				row.set("band_nodes", i64(band_nodes[b]));
+				row.set("band_visits_reference", i64(band_visits[b]));
+				row.set("changed_nodes", i64(changed_nodes[b]));
+				row.set("changed_visits_reference", i64(changed_visits[b]));
+				row.set("changed_nodes_pct_of_band",
+					100.0 * double(changed_nodes[b]) / double(band_nodes[b]), 4);
+				row.set("changed_visits_pct_of_band", band_visits[b]
+					? 100.0 * double(changed_visits[b]) / double(band_visits[b]) : 0.0, 4);
+				// What share of ALL the variant's changed visits landed in this band.
+				row.set("share_of_changed_visits", v.changed_visits
+					? double(changed_visits[b]) / double(v.changed_visits) : 0.0, 6);
+				row.set("share_of_reference_visits", total_visits
+					? double(band_visits[b]) / double(total_visits) : 0.0, 6);
+				row.set("source", "S-measured");
+				sum_ok = row.flush(d3_sum_csv) && sum_ok;
+			}
+		}
+		if (!sum_ok) { LOG_ERROR("  write failed for %s", d3_sum_csv.c_str()); return false; }
+	}
+
 	bool all_ok = true;
 	const variant& base = variants[0];
 	std::vector<trace_result> base_trace(3);
@@ -407,6 +667,13 @@ bool run_geometry_collapse(const geometry_collapse_args& args)
 			row.set("decisions_changed", i64(v.changed));
 			row.set("decisions_changed_pct",
 				binary_nodes ? 100.0 * double(v.changed) / double(binary_nodes) : 0.0, 4);
+			// The same decisions weighted by how often the reference traversal
+			// reaches them. A raw rate far above this one means the changes sit
+			// in rarely-visited nodes and cannot be moving traversal work.
+			row.set("changed_visits_reference", i64(v.changed_visits));
+			row.set("total_visits_reference", i64(total_visits));
+			row.set("decisions_changed_visit_weighted_pct",
+				total_visits ? 100.0 * double(v.changed_visits) / double(total_visits) : 0.0, 4);
 			row.set("sah_cost", v.quality.sah_cost, 6);
 			row.set("dir_loss_cost", v.loss.directional, 6);
 			row.set("scalar_loss_cost", v.loss.scalar_density, 6);
@@ -581,19 +848,6 @@ namespace
 			return d > 0.0 ? cov / d : 0.0;
 		}
 	};
-
-	std::vector<u32> node_depths(const bvh2& tree)
-	{
-		const std::vector<bvh2_node>& nodes = tree.nodes();
-		std::vector<u32> depth(nodes.size(), 0u);
-		for (size_t i = 0; i < nodes.size(); ++i)
-		{
-			if (!nodes[i].ptr.is_int) continue;
-			for (u32 c = 0; c < nodes[i].ptr.child_cnt; ++c)
-				depth[nodes[i].ptr.child_idx + c] = depth[i] + 1u;
-		}
-		return depth;
-	}
 
 } // namespace
 

@@ -807,3 +807,183 @@ TEST(GeometryLossAniso, MinAndMeanFillAgreeOnIsotropicNodesAndDivergeOtherwise)
 		<< "the summed formulation is blind to the redistribution";
 	EXPECT_NEAR(directional_min_fill(box, aniso), 0.0, 1e-9);
 }
+
+// ================================================================ E2 / E3
+// Gate B moved the saturating map and the aggregation at the same time, so its
+// verdict could not be attributed to either. axis_fill_shape separates the map,
+// the aggregation and the face-area weighting, and these tests pin each one.
+
+TEST(GeometryLossShape, WeightedMeanOfClampedFillsReproducesMeanFill)
+{
+	// The anchor for E2 and E3: alpha = 1 with the clamp IS the current
+	// formulation. Without this, a sweep over the grid would not be measuring
+	// perturbations of the shipped loss at all.
+	const aabb box(vec3(0.0f), vec3(1.0f, 2.0f, 4.0f));   // Fx=8, Fy=4, Fz=2
+
+	const directional_geometry cases[] = {
+		g_from(0.0, 0.0, 0.0, 0.0),        // empty
+		g_from(1.0, 2.0, 0.5, 3.0),        // partially filled, no axis saturating
+		g_from(20.0, 1.0, 0.25, 20.0),     // one axis far past saturation
+		g_from(8.0, 4.0, 2.0, 14.0),       // exactly full on every axis
+	};
+
+	fill_shape_args fa;
+	fa.map = fill_map::clamp;
+	fa.aggregate = fill_aggregate::weighted_mean;
+	fa.weight_exponent = 1.0;
+
+	for (const directional_geometry& g : cases)
+		EXPECT_NEAR(axis_fill_shape(box, g, fa), directional_mean_fill(box, g), 1e-6)
+			<< "alpha=1 clamped weighted mean must equal 1 - Ldir/SA";
+}
+
+TEST(GeometryLossShape, MeanFillIsTheFaceAreaWeightedMeanOfClampedFills)
+{
+	// States the closed form the weighting is justified by: face area is
+	// proportional to the chance a random ray enters through that face, so this
+	// is an estimate of the probability that a ray entering the box meets
+	// geometry. Fx=8, Fy=4, Fz=2, so the x axis carries half the weight.
+	const aabb box(vec3(0.0f), vec3(1.0f, 2.0f, 4.0f));
+	const directional_geometry g = g_from(2.0, 3.0, 0.5, 5.5);
+
+	// q = (0.25, 0.75, 0.25); none saturates, so the clamp is inert.
+	const double expect = (8.0 * 0.25 + 4.0 * 0.75 + 2.0 * 0.25) / (8.0 + 4.0 + 2.0);
+
+	EXPECT_NEAR(directional_mean_fill(box, g), expect, 1e-6);
+}
+
+TEST(GeometryLossShape, TheMapAndTheAggregationAreIndependentKnobs)
+{
+	// The 2x2 Gate B confounded. On a node with one nearly empty axis all four
+	// cells must be distinguishable, and the two current scores must sit on the
+	// diagonal.
+	const aabb box = equal_face_box();              // faces 10, 10, 10
+	const directional_geometry g = g_from(1.0, 6.0, 9.0, 16.0);  // q = .1, .6, .9
+
+	fill_shape_args fa;
+	fa.aggregate = fill_aggregate::weighted_mean;
+	fa.weight_exponent = 1.0;
+
+	fa.map = fill_map::clamp;
+	const double mean_clamp = axis_fill_shape(box, g, fa);
+	fa.map = fill_map::exponential;
+	const double mean_exp = axis_fill_shape(box, g, fa);
+
+	fa.aggregate = fill_aggregate::min;
+	fa.map = fill_map::clamp;
+	const double min_clamp = axis_fill_shape(box, g, fa);
+	fa.map = fill_map::exponential;
+	const double min_exp = axis_fill_shape(box, g, fa);
+
+	// The corners the probe already scores.
+	EXPECT_NEAR(mean_clamp, directional_mean_fill(box, g), 1e-6);
+	EXPECT_NEAR(min_exp, directional_min_fill(box, g), 1e-9);
+
+	// Faces are equal, so the weighted mean is the plain mean of (.1, .6, .9).
+	EXPECT_NEAR(mean_clamp, (0.1 + 0.6 + 0.9) / 3.0, 1e-6);
+	// 1e-6, not 1e-9: equal_face_box() is built from sqrt(10.0f), so its faces
+	// are 10 only to f32 precision and q carries a ~2e-9 error into the map.
+	EXPECT_NEAR(min_clamp, 0.1, 1e-6);
+	EXPECT_NEAR(min_exp, 1.0 - std::exp(-0.1), 1e-6);
+
+	// Below saturation the exponential compresses every fill, so holding the
+	// aggregation fixed it must report a node as emptier than the clamp does.
+	// This is the mechanism by which it can lose in a non-saturating scene.
+	EXPECT_LT(mean_exp, mean_clamp);
+	EXPECT_LT(min_exp, min_clamp);
+}
+
+TEST(GeometryLossShape, WeightExponentMovesTheScoreTowardTheDominantFace)
+{
+	// E3. A box whose faces differ by 8x, with the large face nearly empty and
+	// the small faces full. alpha = 0 ignores face size; increasing alpha must
+	// pull the score monotonically toward the large, empty face.
+	const aabb box(vec3(0.0f), vec3(1.0f, 1.0f, 8.0f));   // Fx=8, Fy=8, Fz=1
+	const directional_geometry g = g_from(0.8, 0.8, 1.0, 2.6);  // q = .1, .1, 1.0
+
+	fill_shape_args fa;
+	fa.map = fill_map::clamp;
+	fa.aggregate = fill_aggregate::weighted_mean;
+
+	fa.weight_exponent = 0.0;
+	const double a0 = axis_fill_shape(box, g, fa);
+	fa.weight_exponent = 0.5;
+	const double a05 = axis_fill_shape(box, g, fa);
+	fa.weight_exponent = 1.0;
+	const double a1 = axis_fill_shape(box, g, fa);
+	fa.weight_exponent = 2.0;
+	const double a2 = axis_fill_shape(box, g, fa);
+
+	EXPECT_NEAR(a0, (0.1 + 0.1 + 1.0) / 3.0, 1e-9);
+	EXPECT_GT(a0, a05);
+	EXPECT_GT(a05, a1);
+	EXPECT_GT(a1, a2);
+
+	// alpha -> inf concentrates on the largest faces, which are the empty ones.
+	fa.weight_exponent = 8.0;
+	EXPECT_NEAR(axis_fill_shape(box, g, fa), 0.1, 1e-3);
+}
+
+TEST(GeometryLossShape, DegenerateAxesFollowTheStatedPolicy)
+{
+	// A flat box: Fz = 0, so the z axis has no entry face at all.
+	const aabb box(vec3(0.0f), vec3(2.0f, 3.0f, 0.0f));   // Fx=0, Fy=0, Fz=6
+	const directional_geometry g = g_from(0.0, 0.0, 3.0, 3.0);
+
+	fill_shape_args fa;
+	fa.map = fill_map::clamp;
+	fa.aggregate = fill_aggregate::weighted_mean;
+	fa.weight_exponent = 1.0;
+
+	// exclude: only the z axis is usable, q = 0.5.
+	fa.degenerate = degenerate_axis_policy::exclude;
+	EXPECT_NEAR(axis_fill_shape(box, g, fa), 0.5, 1e-6);
+
+	// treat_as_full: the two degenerate axes claim fill 1, but they carry no face
+	// area, so under alpha = 1 they cannot move a weighted mean.
+	fa.degenerate = degenerate_axis_policy::treat_as_full;
+	EXPECT_NEAR(axis_fill_shape(box, g, fa), 0.5, 1e-6)
+		<< "zero-area faces must not gain weight by being called full";
+
+	// Unweighted, they do count, and the documented answer changes.
+	fa.weight_exponent = 0.0;
+	EXPECT_NEAR(axis_fill_shape(box, g, fa), (1.0 + 1.0 + 0.5) / 3.0, 1e-6);
+
+	// Under exclude they are dropped whatever the weighting.
+	fa.degenerate = degenerate_axis_policy::exclude;
+	EXPECT_NEAR(axis_fill_shape(box, g, fa), 0.5, 1e-6);
+
+	// A box with no extent at all has nothing to enter, so nothing is wasted.
+	const aabb point(vec3(1.0f), vec3(1.0f));
+	EXPECT_NEAR(axis_fill_shape(point, g, fa), 1.0, 1e-9);
+}
+
+TEST(GeometryLossShape, ShapeIsInvariantUnderUniformScale)
+{
+	// Every fill is a ratio of two areas, so a uniform scale must cancel exactly
+	// for every point in the grid. Anything else would make a swept alpha a
+	// scene-scale artefact.
+	const aabb box(vec3(0.0f), vec3(1.0f, 2.0f, 4.0f));
+	const f32  s = 3.0f;
+	const aabb big(vec3(0.0f), vec3(1.0f * s, 2.0f * s, 4.0f * s));
+
+	const directional_geometry g = g_from(2.0, 3.0, 0.5, 5.5);
+	// Projections are areas, so they scale as s^2.
+	const directional_geometry gs = g_from(2.0 * s * s, 3.0 * s * s, 0.5 * s * s,
+		5.5 * s * s);
+
+	const fill_map      maps[] = { fill_map::clamp, fill_map::exponential };
+	const fill_aggregate aggs[] = { fill_aggregate::weighted_mean, fill_aggregate::min };
+	const double        alphas[] = { 0.0, 0.5, 1.0, 2.0 };
+
+	for (fill_map mp : maps)
+		for (fill_aggregate ag : aggs)
+			for (double al : alphas)
+			{
+				fill_shape_args fa;
+				fa.map = mp;
+				fa.aggregate = ag;
+				fa.weight_exponent = al;
+				EXPECT_NEAR(axis_fill_shape(box, g, fa), axis_fill_shape(big, gs, fa), 1e-6);
+			}
+}

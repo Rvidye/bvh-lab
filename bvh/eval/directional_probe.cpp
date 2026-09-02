@@ -209,6 +209,29 @@ namespace bvh
 			set_score(s, score_id::directional_min_fill,
 				directional_min_fill(child_box, g, degenerate_axis_policy::exclude), true);
 
+			// The rest of the (map x aggregate x weighting) grid. mean_fill above
+			// is (clamp, weighted_mean, alpha=1); min_fill is (exponential, min).
+			{
+				fill_shape_args fa;
+				fa.map = fill_map::clamp;
+				fa.aggregate = fill_aggregate::weighted_mean;
+
+				fa.weight_exponent = 0.0;
+				set_score(s, score_id::fill_mean_clamp_a0, axis_fill_shape(child_box, g, fa), true);
+				fa.weight_exponent = 0.5;
+				set_score(s, score_id::fill_mean_clamp_a05, axis_fill_shape(child_box, g, fa), true);
+				fa.weight_exponent = 2.0;
+				set_score(s, score_id::fill_mean_clamp_a2, axis_fill_shape(child_box, g, fa), true);
+
+				fa.map = fill_map::exponential;
+				fa.weight_exponent = 1.0;
+				set_score(s, score_id::fill_mean_exp, axis_fill_shape(child_box, g, fa), true);
+
+				fa.map = fill_map::clamp;
+				fa.aggregate = fill_aggregate::min;
+				set_score(s, score_id::fill_min_clamp, axis_fill_shape(child_box, g, fa), true);
+			}
+
 			return s;
 		}
 
@@ -244,6 +267,10 @@ namespace bvh
 			directional_analysis_args args{};
 
 			probe_scratch scratch;
+
+			// E4: depth of every node, so a pair can be attributed to the level of
+			// the tree it was decided at. Built once per rayset, not per ray.
+			std::vector<u32> depth;
 
 			directional_totals* totals{ nullptr };
 			std::vector<candidate_event>* events{ nullptr };
@@ -281,6 +308,12 @@ namespace bvh
 			const aabb parent_box = (parent_node_id == invalid_id)
 				? ctx.view.nodes[0].bounds                  // pseudo-root entry
 				: ctx.view.nodes[parent_node_id].bounds;
+
+			// The pseudo-root entry stands for the root itself, which is depth 0.
+			const u32 parent_depth = (parent_node_id == invalid_id
+				|| parent_node_id >= ctx.depth.size()) ? 0u : ctx.depth[parent_node_id];
+			const u32 depth_bucket = parent_depth < depth_bucket_count
+				? parent_depth : depth_bucket_count - 1u;
 
 			for (u32 i = 0; i < count; ++i)
 			{
@@ -367,6 +400,7 @@ namespace bvh
 
 					++totals.discordant_pairs;
 					++ctx.row.discordant_pairs;
+					++totals.depths.pairs[depth_bucket];
 
 					for (u32 s = 0; s < score_count; ++s)
 					{
@@ -375,11 +409,13 @@ namespace bvh
 						{
 							++totals.correct[s];
 							++ctx.row.correct[s];
+							++totals.depths.correct[depth_bucket][s];
 						}
 						else if (verdict == 0)
 						{
 							++totals.ties[s];
 							++ctx.row.ties[s];
+							++totals.depths.ties[depth_bucket][s];
 						}
 					}
 				}
@@ -589,6 +625,11 @@ namespace bvh
 		case score_id::box_projected_ratio: return "box_projected_ratio";
 		case score_id::directional_mean_fill: return "directional_mean_fill";
 		case score_id::directional_min_fill:  return "directional_min_fill";
+		case score_id::fill_mean_clamp_a0:  return "fill_mean_clamp_a0";
+		case score_id::fill_mean_clamp_a05: return "fill_mean_clamp_a05";
+		case score_id::fill_mean_clamp_a2:  return "fill_mean_clamp_a2";
+		case score_id::fill_mean_exp:       return "fill_mean_exp";
+		case score_id::fill_min_clamp:      return "fill_min_clamp";
 		default:                            return "unknown";
 		}
 	}
@@ -699,6 +740,19 @@ namespace bvh
 		ctx.args = args;
 		ctx.totals = &result.totals;
 		ctx.events = args.collect_events ? &result.events : nullptr;
+
+		// Node depths, for the E4 per-level breakdown. Nodes are stored parent
+		// before child, so one forward pass suffices.
+		{
+			const std::vector<bvh2_node>& nodes = tree.nodes();
+			ctx.depth.assign(nodes.size(), 0u);
+			for (size_t i = 0; i < nodes.size(); ++i)
+			{
+				if (!nodes[i].ptr.is_int) continue;
+				for (u32 c = 0; c < nodes[i].ptr.child_cnt; ++c)
+					ctx.depth[nodes[i].ptr.child_idx + c] = ctx.depth[i] + 1u;
+			}
+		}
 
 		const u32 n = rays.size();
 		result.totals.rays = n;

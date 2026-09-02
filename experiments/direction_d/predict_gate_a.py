@@ -75,6 +75,45 @@ CONTRASTS = [
     ("directional_mean_fill", GEOMETRY_CONTROL),
     ("directional_mean_fill", "directional"),
     ("directional_min_fill", "directional"),
+    # E1: with the clamp not binding, mean_fill and surface_density differ only
+    # by the L1-vs-L2 norm of the triangle normals, i.e. by whether the geometry
+    # aligns with the box axes. This contrast decides whether the axis
+    # decomposition carries anything beyond triangle density.
+    ("directional_mean_fill", "surface_density"),
+    ("directional_mean_fill", "primitive_count"),
+    ("directional_min_fill", "surface_density"),
+
+    # E2: Gate B moved the saturating map and the aggregation together. These
+    # four hold one knob fixed while the other moves.
+    #   mean_fill      = (clamp,       weighted mean, alpha=1)
+    #   fill_mean_exp  = (exponential, weighted mean, alpha=1)
+    #   fill_min_clamp = (clamp,       min)
+    #   min_fill       = (exponential, min)
+    ("directional_mean_fill", "fill_mean_exp"),      # map, mean held fixed
+    ("fill_min_clamp", "directional_min_fill"),      # map, min held fixed
+    ("directional_mean_fill", "fill_min_clamp"),     # aggregation, clamp held fixed
+    ("fill_mean_exp", "directional_min_fill"),       # aggregation, exponential held fixed
+    ("fill_mean_clamp_a0", "fill_min_clamp"),        # aggregation, both unweighted
+
+    # E3: the face-area weight exponent, map and aggregation held fixed.
+    # alpha 0 unweighted, 1 area-weighted (the current loss), 2 over-weighted.
+    ("directional_mean_fill", "fill_mean_clamp_a0"),
+    ("directional_mean_fill", "fill_mean_clamp_a05"),
+    ("directional_mean_fill", "fill_mean_clamp_a2"),
+    ("fill_mean_clamp_a0", "surface_density"),
+]
+
+# Printed as named sub-tables so the grid can be read as a grid.
+KNOB_CONTRASTS = [
+    ("E2 map (weighted mean fixed)", "directional_mean_fill", "fill_mean_exp"),
+    ("E2 map (min fixed)", "fill_min_clamp", "directional_min_fill"),
+    ("E2 aggregation (clamp fixed)", "directional_mean_fill", "fill_min_clamp"),
+    ("E2 aggregation (exponential fixed)", "fill_mean_exp", "directional_min_fill"),
+    ("E2 aggregation (both unweighted)", "fill_mean_clamp_a0", "fill_min_clamp"),
+    ("E3 weighting alpha 1 vs 0", "directional_mean_fill", "fill_mean_clamp_a0"),
+    ("E3 weighting alpha 1 vs 0.5", "directional_mean_fill", "fill_mean_clamp_a05"),
+    ("E3 weighting alpha 1 vs 2", "directional_mean_fill", "fill_mean_clamp_a2"),
+    ("E1 mean_fill vs surface_density", "directional_mean_fill", "surface_density"),
 ]
 
 BOOTSTRAP_RESAMPLES = 1000
@@ -470,6 +509,53 @@ def main():
         print()
         print("min_fill significantly better in %d cells, significantly worse in %d, "
               "inconclusive in %d" % (b_pass, b_fail, len(by_contrast) - b_pass - b_fail))
+
+    # ------------------------------------------------------------- E2 / E3
+    tally = [(label, a, b) for label, a, b in KNOB_CONTRASTS
+             if a in scores and b in scores]
+    if tally:
+        print()
+        print("=== E2/E3: one knob at a time (paired CI on the difference) ===")
+        print("| contrast | a better | b better | inconclusive | median delta |")
+        print("|" + "---|" * 5)
+        for label, a, b in tally:
+            deltas, na, nb, ni = [], 0, 0, 0
+            for key in sorted(by_contrast):
+                r = by_contrast[key].get((a, b))
+                if r is None:
+                    continue
+                deltas.append(float(r["delta"]))
+                v = r["a_beats_b"]
+                na += v == "yes"
+                nb += v == "no"
+                ni += v == "inconclusive"
+            if not deltas:
+                continue
+            deltas.sort()
+            med = deltas[len(deltas) // 2]
+            print("| %s (%s vs %s) | %d | %d | %d | %+.4f |" % (label, a, b, na, nb, ni, med))
+
+    # The alpha sweep read as a curve rather than as pairwise contrasts.
+    sweep = [("0", "fill_mean_clamp_a0"), ("0.5", "fill_mean_clamp_a05"),
+             ("1", "directional_mean_fill"), ("2", "fill_mean_clamp_a2")]
+    sweep = [(a, s) for a, s in sweep if s in scores]
+    if len(sweep) > 1:
+        print()
+        print("=== E3: win rate vs face-area weight exponent (clamp, weighted mean) ===")
+        print("| scene | ray dist | " + " | ".join("alpha=" + a for a, _ in sweep) + " | peak |")
+        print("|" + "---|" * (len(sweep) + 3))
+        peaks = collections.Counter()
+        for key in sorted(by_cell):
+            c = by_cell[key]
+            vals = [float(c[s]["win_rate"]) for _, s in sweep]
+            best = max(range(len(vals)), key=lambda i: vals[i])
+            peaks[sweep[best][0]] += 1
+            print("| %s | %s | %s | alpha=%s |" % (
+                key[0].replace(".obj", ""), key[1],
+                " | ".join("%.4f" % v for v in vals), sweep[best][0]))
+        print()
+        print("peak alpha counts: " + ", ".join(
+            "alpha=%s in %d cells" % (a, n) for a, n in sorted(peaks.items())))
 
     return 0
 

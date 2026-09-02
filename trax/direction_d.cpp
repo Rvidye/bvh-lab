@@ -417,6 +417,7 @@ bool run_direction_d(const mesh& original, const direction_d_args& args)
 	const std::string bins_csv = args.run_dir + "/d1_directional_bins.csv";
 	const std::string pairs_csv = args.run_dir + "/d1_directional_pairs.csv";
 	const std::string summary_csv = args.run_dir + "/d1_summary.csv";
+	const std::string depth_csv = args.run_dir + "/d1_depth.csv";
 
 	const std::string scene_sha = sha256_file(args.scene_path);
 
@@ -752,6 +753,46 @@ bool run_direction_d(const mesh& original, const direction_d_args& args)
 			row.set("source_trace_steps", "S-cpu-analysis-mirror");
 
 			wrote = row.flush(summary_csv) && wrote;
+		}
+
+		// ------------------------------------------------------------ depth CSV
+		//
+		// E4: the same win rate, broken down by the depth of the parent whose
+		// children were compared. These are pooled counts, not ray clusters, so
+		// they carry no clustered interval and none is written.
+		for (u32 d = 0; d < depth_bucket_count; ++d)
+		{
+			if (t.depths.pairs[d] == 0) continue;
+
+			metrics row;
+			row.set("run_id", args.run_id);
+			row.set("git_commit", args.git_commit);
+			row.set("dirty", args.dirty ? 1u : 0u);
+			row.set("scene", args.scene_name);
+			row.set("ray_set", to_string(coord.dist));
+			row.set("ray_seed", coord.seed_tag);
+			row.set("query_kind", to_string(kind));
+			row.set("max_depth", tree.report().max_depth);
+			row.set("parent_depth", d);
+			row.set("is_last_bucket", d == depth_bucket_count - 1u ? 1u : 0u);
+			row.set("discordant_pairs", i64(t.depths.pairs[d]));
+
+			for (u32 s = 0; s < score_count; ++s)
+			{
+				const std::string base = to_string(static_cast<score_id>(s));
+				const u64 c = t.depths.correct[d][s];
+				const u64 ti = t.depths.ties[d][s];
+				const u64 inc = t.depths.pairs[d] - c - ti;
+				row.set((base + "_correct").c_str(), i64(c));
+				row.set((base + "_ties").c_str(), i64(ti));
+				row.set((base + "_incorrect").c_str(), i64(inc));
+				// Ties excluded from the denominator, as everywhere else.
+				if (c + inc > 0) row.set((base + "_win_rate").c_str(), double(c) / double(c + inc), 6);
+				else             row.set((base + "_win_rate").c_str(), "");
+			}
+
+			row.set("source", "S-measured");
+			wrote = row.flush(depth_csv) && wrote;
 		}
 
 		if (!wrote)

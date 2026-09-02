@@ -142,6 +142,49 @@ namespace bvh
 	double directional_min_fill(const aabb& box, const directional_geometry& g,
 		degenerate_axis_policy policy = degenerate_axis_policy::exclude);
 
+	// ------------------------------------------ parameterised fill shapes (E2/E3)
+	//
+	// Gate B compared (clamp, area-weighted mean) against (exponential, unweighted
+	// min): two knobs moved at once, so its verdict could not be attributed to
+	// either. The types below separate them so each can be measured alone.
+	//
+	// The measured saturation regime is what makes this worth doing. d2 found
+	// q >= 1 on only 2-4% of axes with p90(q) below 0.90, so the exponential's
+	// one advantage over the clamp -- preserving order where the clamp is flat --
+	// almost never applies here, while its cost, compressing the 96-98% of the
+	// mass that sits below q = 1, always does.
+
+	enum class fill_map : u32
+	{
+		clamp,        // min(1, q), which is what Ldir implies
+		exponential,  // 1 - exp(-q)
+	};
+
+	enum class fill_aggregate : u32
+	{
+		weighted_mean,
+		min,          // worst axis; weights do not apply
+	};
+
+	// weight_i = F_i^weight_exponent. Exponent 0 is unweighted. Exponent 1
+	// weights each axis by its box face area, which is proportional to the chance
+	// a random ray enters through that face -- so the alpha = 1 weighted mean of
+	// CLAMPED fills estimates the probability that a ray entering this box meets
+	// geometry inside it. That quantity is exactly 1 - Ldir/SA, which is what the
+	// collapse already optimises; it had simply never been named.
+	struct fill_shape_args
+	{
+		fill_map               map{ fill_map::clamp };
+		fill_aggregate         aggregate{ fill_aggregate::weighted_mean };
+		double                 weight_exponent{ 1.0 };
+		degenerate_axis_policy degenerate{ degenerate_axis_policy::exclude };
+	};
+
+	// Fill in [0,1], higher meaning fuller, anywhere in that space. With
+	// {clamp, weighted_mean, 1.0} this reproduces directional_mean_fill.
+	double axis_fill_shape(const aabb& box, const directional_geometry& g,
+		const fill_shape_args& args);
+
 	// The array handed to collapse_args::node_internal_area:
 	//     SA(n) + mu * L(n)
 	// At mu == 0, or with collapse_loss::none, every entry is produced by calling
