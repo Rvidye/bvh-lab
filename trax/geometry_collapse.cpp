@@ -15,6 +15,8 @@
 #include <util/metrics.h>
 #include <util/timer.h>
 
+#include <cmath>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -498,4 +500,280 @@ bool run_geometry_collapse(const geometry_collapse_args& args)
 	}
 
 	return all_ok;
+}
+
+// ------------------------------------------------------------ node-term dump
+//
+// WP-C: the per-node data that makes a collapse run analysable. Without it the
+// report can say WHAT changed but not WHY.
+//
+// A full per-node CSV would be 19.9M rows for San Miguel, which is neither
+// committable nor readable. The questions the plan actually asks -- per-axis
+// saturation rate, whether the three fills are correlated or anticorrelated,
+// the distribution of q -- are aggregate questions, so they are answered over
+// EVERY node in d2_node_summary.csv, and d2_node_terms.csv carries a
+// deterministic stride sample for inspection.
+
+namespace
+{
+	constexpr u32 node_term_sample_cap = 200000u;
+
+	// q histogram: 500 bins over [0,5) plus an overflow bucket, which gives
+	// quantiles to about 0.01 with O(1) memory.
+	constexpr u32 q_bins = 500u;
+	constexpr double q_hist_max = 5.0;
+
+	struct axis_stats
+	{
+		u64    valid{ 0 };
+		u64    degenerate{ 0 };
+		u64    saturated{ 0 };
+		double q_sum{ 0.0 };
+		double fill_sum{ 0.0 };
+		u64    hist[q_bins + 1]{};
+
+		void add(bool is_valid, double q, double fill)
+		{
+			if (!is_valid) { ++degenerate; return; }
+			++valid;
+			q_sum += q;
+			fill_sum += fill;
+			if (q >= 1.0) ++saturated;
+			const u32 b = q >= q_hist_max
+				? q_bins
+				: static_cast<u32>(q / q_hist_max * double(q_bins));
+			++hist[b < q_bins ? b : q_bins];
+		}
+
+		double quantile(double p) const
+		{
+			if (valid == 0) return 0.0;
+			const u64 target = static_cast<u64>(p * double(valid));
+			u64 seen = 0;
+			for (u32 b = 0; b < q_bins; ++b)
+			{
+				seen += hist[b];
+				if (seen >= target)
+					return (double(b) + 0.5) * q_hist_max / double(q_bins);
+			}
+			return q_hist_max;
+		}
+	};
+
+	// Running Pearson correlation between two fill series.
+	struct correlation
+	{
+		u64    n{ 0 };
+		double sx{ 0.0 }, sy{ 0.0 }, sxx{ 0.0 }, syy{ 0.0 }, sxy{ 0.0 };
+
+		void add(double x, double y)
+		{
+			++n; sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+		}
+
+		double value() const
+		{
+			if (n < 2) return 0.0;
+			const double cov = sxy / double(n) - (sx / double(n)) * (sy / double(n));
+			const double vx = sxx / double(n) - (sx / double(n)) * (sx / double(n));
+			const double vy = syy / double(n) - (sy / double(n)) * (sy / double(n));
+			const double d = std::sqrt(vx * vy);
+			return d > 0.0 ? cov / d : 0.0;
+		}
+	};
+
+	std::vector<u32> node_depths(const bvh2& tree)
+	{
+		const std::vector<bvh2_node>& nodes = tree.nodes();
+		std::vector<u32> depth(nodes.size(), 0u);
+		for (size_t i = 0; i < nodes.size(); ++i)
+		{
+			if (!nodes[i].ptr.is_int) continue;
+			for (u32 c = 0; c < nodes[i].ptr.child_cnt; ++c)
+				depth[nodes[i].ptr.child_idx + c] = depth[i] + 1u;
+		}
+		return depth;
+	}
+
+} // namespace
+
+bool run_node_terms(const geometry_collapse_args& args)
+{
+	LOG_INFO("=== node terms: %s ===", args.scene_name.c_str());
+
+	std::filesystem::create_directories(args.run_dir);
+	const std::string terms_csv = args.run_dir + "/d2_node_terms.csv";
+	const std::string summary_csv = args.run_dir + "/d2_node_summary.csv";
+
+	mesh m;
+	if (!m.load_obj(args.scene_path))
+	{
+		LOG_ERROR("  could not load '%s'", args.scene_path.c_str());
+		return false;
+	}
+
+	build_args ba;
+	ba.method = split_method::binned_sah;
+	ba.bins = args.bins;
+	ba.max_leaf_size = 1;
+	ba.silent = true;
+
+	bvh2 binary;
+	binary.build(m, ba);
+	binary.apply_reorder(m);
+	binary.refit(m);
+
+	const std::vector<bvh2_node>& nodes = binary.nodes();
+	const std::vector<directional_geometry> g = compute_directional_geometry(binary, m);
+	const std::vector<u32> depth = node_depths(binary);
+
+	LOG_INFO("  %zu binary nodes, depth %u", nodes.size(), binary.report().max_depth);
+
+	// Deterministic stride so the sample is reproducible and spread over the tree.
+	const u64 stride = nodes.size() > node_term_sample_cap
+		? (nodes.size() + node_term_sample_cap - 1) / node_term_sample_cap
+		: 1u;
+
+	std::ofstream out(terms_csv, std::ios::app);
+	if (!out.is_open()) { LOG_ERROR("  cannot open %s", terms_csv.c_str()); return false; }
+	if (std::filesystem::file_size(terms_csv) == 0)
+		out << "run_id,scene,node_id,depth,is_internal,prim_count,subtree_prims,"
+		"sa,fx,fy,fz,g_yz,g_xz,g_xy,tri_area_sum,"
+		"q_x,q_y,q_z,fill_x,fill_y,fill_z,"
+		"q_valid_x,q_valid_y,q_valid_z,q_saturated_x,q_saturated_y,q_saturated_z,"
+		"l_dir,l_scalar,l_dir_min,l_dir_spread\n";
+
+	axis_stats  ax[3];
+	correlation corr_xy, corr_xz, corr_yz;
+	u64 nodes_all = 0, nodes_internal = 0;
+	u64 sat_count_hist[4]{};       // nodes with 0..3 saturated axes
+	u64 any_degenerate = 0;
+	double l_dir_over_sa = 0.0, l_min_over_sa = 0.0, l_scalar_over_sa = 0.0;
+	u64 sa_positive = 0;
+
+	char buf[768];
+
+	for (size_t i = 0; i < nodes.size(); ++i)
+	{
+		const aabb& box = nodes[i].bounds;
+		const directional_geometry& gi = g[i];
+
+		const vec3 e = box.extent();
+		const double fx = double(e.y) * double(e.z);
+		const double fy = double(e.x) * double(e.z);
+		const double fz = double(e.x) * double(e.y);
+		const double sa = double(box.surface_area());
+
+		const axis_fill a = compute_axis_fill(box, gi);
+
+		const f32 l_dir = directional_loss(box, gi);
+		const f32 l_scalar = scalar_density_loss(box, gi);
+		const f32 l_min = directional_min_loss(box, gi);
+		const f32 l_spread = directional_spread_loss(box, gi);
+
+		++nodes_all;
+		if (nodes[i].ptr.is_int) ++nodes_internal;
+
+		u32 sat = 0;
+		for (u32 k = 0; k < 3; ++k)
+		{
+			ax[k].add(a.valid[k], a.q[k], a.fill[k]);
+			if (a.valid[k] && a.saturated[k]) ++sat;
+		}
+		++sat_count_hist[sat < 4 ? sat : 3];
+		if (a.valid_count < 3) ++any_degenerate;
+
+		// Correlations only over nodes where both axes are meaningful.
+		if (a.valid[0] && a.valid[1]) corr_xy.add(a.fill[0], a.fill[1]);
+		if (a.valid[0] && a.valid[2]) corr_xz.add(a.fill[0], a.fill[2]);
+		if (a.valid[1] && a.valid[2]) corr_yz.add(a.fill[1], a.fill[2]);
+
+		if (sa > 0.0)
+		{
+			++sa_positive;
+			l_dir_over_sa += double(l_dir) / sa;
+			l_min_over_sa += double(l_min) / sa;
+			l_scalar_over_sa += double(l_scalar) / sa;
+		}
+
+		if (i % stride) continue;
+
+		const int n = snprintf(buf, sizeof(buf),
+			"%s,%s,%zu,%u,%u,%u,%u,"
+			"%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,"
+			"%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,"
+			"%u,%u,%u,%u,%u,%u,"
+			"%.6g,%.6g,%.6g,%.6g\n",
+			args.run_id.c_str(), args.scene_name.c_str(), i, depth[i],
+			nodes[i].ptr.is_int ? 1u : 0u,
+			nodes[i].ptr.is_int ? 0u : u32(nodes[i].ptr.prim_cnt),
+			gi.primitive_count,
+			sa, fx, fy, fz, gi.p_yz, gi.p_xz, gi.p_xy, gi.triangle_surface_area_sum,
+			a.q[0], a.q[1], a.q[2], a.fill[0], a.fill[1], a.fill[2],
+			a.valid[0] ? 1u : 0u, a.valid[1] ? 1u : 0u, a.valid[2] ? 1u : 0u,
+			a.saturated[0] ? 1u : 0u, a.saturated[1] ? 1u : 0u, a.saturated[2] ? 1u : 0u,
+			double(l_dir), double(l_scalar), double(l_min), double(l_spread));
+		out.write(buf, n);
+	}
+
+	out.flush();
+	if (!out.good()) { LOG_ERROR("  write failed for %s", terms_csv.c_str()); return false; }
+
+	const u64 valid_total = ax[0].valid + ax[1].valid + ax[2].valid;
+	const u64 sat_total = ax[0].saturated + ax[1].saturated + ax[2].saturated;
+
+	LOG_INFO("  saturation rate over valid axes: %.4f  (x %.4f, y %.4f, z %.4f)",
+		valid_total ? double(sat_total) / double(valid_total) : 0.0,
+		ax[0].valid ? double(ax[0].saturated) / double(ax[0].valid) : 0.0,
+		ax[1].valid ? double(ax[1].saturated) / double(ax[1].valid) : 0.0,
+		ax[2].valid ? double(ax[2].saturated) / double(ax[2].valid) : 0.0);
+	LOG_INFO("  fill correlation: xy %.4f  xz %.4f  yz %.4f",
+		corr_xy.value(), corr_xz.value(), corr_yz.value());
+	LOG_INFO("  nodes with 0/1/2/3 saturated axes: %llu / %llu / %llu / %llu",
+		(unsigned long long)sat_count_hist[0], (unsigned long long)sat_count_hist[1],
+		(unsigned long long)sat_count_hist[2], (unsigned long long)sat_count_hist[3]);
+
+	metrics row;
+	row.set("run_id", args.run_id);
+	row.set("git_commit", args.git_commit);
+	row.set("dirty", args.dirty ? 1u : 0u);
+	row.set("scene", args.scene_name);
+	row.set("triangles", m.triangle_count());
+	row.set("binary_nodes", i64(nodes_all));
+	row.set("internal_nodes", i64(nodes_internal));
+	row.set("binary_depth", binary.report().max_depth);
+	row.set("sample_stride", i64(stride));
+	row.set("sampled_rows", i64((nodes.size() + stride - 1) / stride));
+
+	row.set("valid_axes", i64(valid_total));
+	row.set("degenerate_axes", i64(ax[0].degenerate + ax[1].degenerate + ax[2].degenerate));
+	row.set("nodes_with_degenerate_axis", i64(any_degenerate));
+	row.set("saturation_rate_all_axes",
+		valid_total ? double(sat_total) / double(valid_total) : 0.0, 6);
+	for (u32 k = 0; k < 3; ++k)
+	{
+		const char* names[3] = { "x", "y", "z" };
+		row.set((std::string("saturation_rate_") + names[k]).c_str(),
+			ax[k].valid ? double(ax[k].saturated) / double(ax[k].valid) : 0.0, 6);
+		row.set((std::string("q_mean_") + names[k]).c_str(),
+			ax[k].valid ? ax[k].q_sum / double(ax[k].valid) : 0.0, 6);
+		row.set((std::string("q_p10_") + names[k]).c_str(), ax[k].quantile(0.10), 4);
+		row.set((std::string("q_p50_") + names[k]).c_str(), ax[k].quantile(0.50), 4);
+		row.set((std::string("q_p90_") + names[k]).c_str(), ax[k].quantile(0.90), 4);
+		row.set((std::string("fill_mean_") + names[k]).c_str(),
+			ax[k].valid ? ax[k].fill_sum / double(ax[k].valid) : 0.0, 6);
+	}
+	row.set("nodes_0_saturated_axes", i64(sat_count_hist[0]));
+	row.set("nodes_1_saturated_axes", i64(sat_count_hist[1]));
+	row.set("nodes_2_saturated_axes", i64(sat_count_hist[2]));
+	row.set("nodes_3_saturated_axes", i64(sat_count_hist[3]));
+	row.set("fill_corr_xy", corr_xy.value(), 6);
+	row.set("fill_corr_xz", corr_xz.value(), 6);
+	row.set("fill_corr_yz", corr_yz.value(), 6);
+	row.set("mean_l_dir_over_sa", sa_positive ? l_dir_over_sa / double(sa_positive) : 0.0, 6);
+	row.set("mean_l_dir_min_over_sa", sa_positive ? l_min_over_sa / double(sa_positive) : 0.0, 6);
+	row.set("mean_l_scalar_over_sa", sa_positive ? l_scalar_over_sa / double(sa_positive) : 0.0, 6);
+	row.set("source", "S-measured");
+
+	return row.flush(summary_csv);
 }

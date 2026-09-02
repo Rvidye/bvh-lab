@@ -33,3 +33,8 @@ struct geometry_collapse_args
 };
 
 bool run_geometry_collapse(const geometry_collapse_args& args);
+
+// WP-C: per-node loss terms plus the aggregate saturation and fill-correlation
+// statistics. Analysis of the binary tree only; builds no wide tree and traces
+// no ray.
+bool run_node_terms(const geometry_collapse_args& args);

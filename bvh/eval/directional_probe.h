@@ -45,11 +45,18 @@ namespace bvh
 	// contains the relevant intersection" for all five.
 	enum class score_id : u32
 	{
-		directional = 0,
+		directional = 0,          // per-ray-direction fill ratio, geom_proj/box_proj along d
 		surface_density,
 		primitive_count,
 		box_surface_ratio,
-		box_projected_ratio,
+		box_projected_ratio,      // pure geometry: uses no triangle information at all
+		// The two collapse-loss shapes, scored as FILLS so that "higher predicts
+		// the child containing the hit" holds for them as for every other score.
+		// mean_fill is 1 - Ldir/SA, i.e. the summed formulation the collapse
+		// currently optimises; min_fill is the worst-axis formulation. Comparing
+		// these two is the whole of Gate B.
+		directional_mean_fill,
+		directional_min_fill,
 		count
 	};
 

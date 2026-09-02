@@ -1,5 +1,6 @@
 #include <eval/directional_probe.h>
 
+#include <build/geometry_loss.h>
 #include <core/isect.h>
 #include <core/mode.h>
 #include <core/traverse_bvh2.h>
@@ -200,6 +201,13 @@ namespace bvh
 				&& parent_proj > 0.0;
 			set_score(s, score_id::box_projected_ratio,
 				proj_ok ? child_proj / parent_proj : 0.0, proj_ok);
+
+			// Node-geometry-only shapes. No ray direction enters these two; they
+			// are exactly the quantities the collapse loss is built from.
+			set_score(s, score_id::directional_mean_fill,
+				directional_mean_fill(child_box, g), true);
+			set_score(s, score_id::directional_min_fill,
+				directional_min_fill(child_box, g, degenerate_axis_policy::exclude), true);
 
 			return s;
 		}
@@ -579,6 +587,8 @@ namespace bvh
 		case score_id::primitive_count:     return "primitive_count";
 		case score_id::box_surface_ratio:   return "box_surface_ratio";
 		case score_id::box_projected_ratio: return "box_projected_ratio";
+		case score_id::directional_mean_fill: return "directional_mean_fill";
+		case score_id::directional_min_fill:  return "directional_min_fill";
 		default:                            return "unknown";
 		}
 	}

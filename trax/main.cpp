@@ -272,9 +272,10 @@ int main(int argc, char** argv)
 	const bool run_direction_d_only = opts.has("direction_d_only");
 	const bool run_phase0_only = opts.has("phase0");
 	const bool run_geometry_collapse_only = opts.has("geometry_collapse");
+	const bool run_node_terms_only = opts.has("node_terms");
 
 	// The geometry-derived BVH8 collapse experiment loads the scene itself.
-	if (run_geometry_collapse_only)
+	if (run_geometry_collapse_only || run_node_terms_only)
 	{
 		geometry_collapse_args gc;
 		gc.run_id = run_id;
@@ -290,7 +291,7 @@ int main(int argc, char** argv)
 		gc.bins = bins;
 		gc.threads = threads;
 
-		const bool ok = run_geometry_collapse(gc);
+		const bool ok = run_node_terms_only ? run_node_terms(gc) : run_geometry_collapse(gc);
 		report_thread_stats();
 		print_stats(stdout);
 		if (!ok) LOG_ERROR("geometry-derived BVH8 collapse reported a failure");
